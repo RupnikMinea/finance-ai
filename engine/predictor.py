@@ -167,8 +167,11 @@ def run_scan(progress_cb: Callable | None = None) -> ScanResult:
     train_end = (datetime.today() - timedelta(days=126 + 10)).strftime('%Y-%m-%d')
 
     if models_are_stale():
-        models, train_stats = train_models(cache, TRAIN_START, train_end)
-        save_models(models, train_stats)
+        try:
+            models, train_stats = train_models(cache, TRAIN_START, train_end)
+            save_models(models, train_stats)
+        except MemoryError:
+            raise RuntimeError('Premalo RAM-a za trening — poskusi znova čez minuto.')
     else:
         models, train_stats = load_models()
 

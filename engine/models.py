@@ -5,9 +5,10 @@ from pathlib import Path
 from config import ALL_FEATS, MODEL_DIR
 from engine.features import build_train_df, time_weights
 
-LGB_PARAMS = dict(n_estimators=400, learning_rate=0.05, max_depth=6,
-                  num_leaves=40, min_child_samples=40, subsample=0.8,
-                  colsample_bytree=0.7, random_state=42, n_jobs=-1, verbose=-1)
+LGB_PARAMS = dict(n_estimators=200, learning_rate=0.05, max_depth=5,
+                  num_leaves=31, min_child_samples=40, subsample=0.8,
+                  colsample_bytree=0.7, random_state=42, n_jobs=1, verbose=-1,
+                  max_bin=127)
 
 
 def train_models(cache: dict, train_s: str, train_e: str) -> tuple[dict, dict]:
