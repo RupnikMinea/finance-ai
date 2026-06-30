@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / '.env')  # lokalno bere .env, na Railway ignorira (env vars so že nastavljene)
 
-FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN', '')
-DATA_SOURCE   = os.getenv('DATA_SOURCE', 'yahoo')
+FINNHUB_TOKEN  = os.getenv('FINNHUB_TOKEN', '')
+DATA_SOURCE    = os.getenv('DATA_SOURCE', 'yahoo')
+SUPABASE_URL   = os.getenv('SUPABASE_URL', '')
+SUPABASE_KEY   = os.getenv('SUPABASE_KEY', '')
 DATA_DIR       = BASE_DIR / 'data'
 CACHE_DIR      = DATA_DIR / 'cache'
 HISTORY_DIR    = DATA_DIR / 'history'

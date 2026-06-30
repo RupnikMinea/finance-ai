@@ -7,3 +7,4 @@ requests>=2.31
 shap>=0.44
 scikit-learn>=1.4
 python-dotenv>=1.0
+supabase>=2.0.0
