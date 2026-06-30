@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+data/cache/
+data/history/
+data/predictions/
+models/*.pkl
+.streamlit/credentials.toml
