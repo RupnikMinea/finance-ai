@@ -1,12 +1,15 @@
 """
 Dynamic US stock universe fetcher.
-Sources (tried in order):
-  1. SEC EDGAR  company_tickers.json  (~8,400 symbols, verify=False for Windows SSL)
-  2. NASDAQ FTP nasdaqlisted.txt      (~6,000 symbols, works on Railway Linux)
-  3. Wikipedia  S&P 500 list          (~500 symbols, last-resort fallback)
+
+fetch_us_tickers()      — all US-listed stocks from SEC EDGAR (~6,400)
+fetch_largecap_tickers() — S&P 500 + S&P 400 MidCap from Wikipedia (~900, all $5B+)
+
+SSL verification is disabled (verify=False) to work around Windows cert issues.
+On Railway Linux the standard CA bundle works fine.
 """
-import requests
+import io
 import warnings
+import requests
 
 
 def _get(url: str, timeout: int = 20) -> requests.Response:
@@ -14,7 +17,7 @@ def _get(url: str, timeout: int = 20) -> requests.Response:
         warnings.simplefilter('ignore')
         return requests.get(
             url, timeout=timeout,
-            headers={'User-Agent': 'minea.rupnik@gmail.com'},
+            headers={'User-Agent': 'Mozilla/5.0'},
             verify=False,
         )
 
@@ -22,14 +25,12 @@ def _get(url: str, timeout: int = 20) -> requests.Response:
 def _is_valid(sym: str) -> bool:
     if not sym:
         return False
-    # Allow only alpha + optional hyphen (BRK-B style)
     clean = sym.replace('-', '')
     if not clean.isalpha():
         return False
     if not (1 <= len(sym) <= 5):
         return False
     last = sym[-1]
-    # Drop OTC foreign (F), mutual funds (X), units (U), warrants (W), rights (R)
     if last in ('F', 'X', 'U', 'W', 'R', 'Z', 'L') and len(clean) > 2:
         return False
     if sym.endswith('PR') or sym.endswith('PRA') or sym.endswith('PRB'):
@@ -37,15 +38,52 @@ def _is_valid(sym: str) -> bool:
     return True
 
 
-def fetch_us_tickers() -> list[str]:
+def _wikipedia_tickers(url: str, symbol_col: str = 'Symbol') -> list[str]:
+    """Fetch a ticker list from a Wikipedia index page."""
+    import pandas as pd
+    r = _get(url, timeout=20)
+    r.raise_for_status()
+    tables = pd.read_html(io.StringIO(r.text))
+    col = tables[0][symbol_col].tolist()
+    return [str(t).replace('.', '-').strip().upper() for t in col if t and str(t) != 'nan']
+
+
+def fetch_largecap_tickers() -> list[str]:
     """
-    Return all US-listed common stock tickers (NYSE + NASDAQ + AMEX).
-    Excludes ETFs, OTC foreign stocks, warrants, preferred shares and SPACs.
-    Typical result: ~5,000–8,000 symbols.
+    Return US stocks with ~$5B+ market cap: S&P 500 + S&P 400 MidCap (~900 tickers).
+    Source: Wikipedia. Falls back to hardcoded curated config lists.
     """
     tickers: set[str] = set()
 
-    # ── Source 1: SEC EDGAR (works on Windows with verify=False) ─────────────
+    for url, col in [
+        ('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', 'Symbol'),
+        ('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 'Symbol'),
+    ]:
+        try:
+            batch = _wikipedia_tickers(url, col)
+            tickers.update(t for t in batch if _is_valid(t.replace('-', '')))
+        except Exception:
+            pass
+
+    # Fallback: use the curated config lists (already $5B+)
+    if not tickers:
+        from config import NASDAQ100, SP500_ADD, RUSSELL2000_TOP
+        tickers.update(NASDAQ100)
+        tickers.update(SP500_ADD)
+        tickers.update(RUSSELL2000_TOP)
+
+    return sorted(tickers)
+
+
+def fetch_us_tickers() -> list[str]:
+    """
+    Return all US-listed common stock tickers (NYSE + NASDAQ + AMEX) from SEC EDGAR.
+    Excludes ETFs, OTC foreign, warrants, preferred shares. ~6,400 tickers.
+    Falls back to NASDAQ FTP (works on Railway), then Wikipedia, then hardcoded.
+    """
+    tickers: set[str] = set()
+
+    # ── Source 1: SEC EDGAR (verify=False for Windows SSL) ───────────────────
     try:
         r = _get('https://www.sec.gov/files/company_tickers.json', timeout=15)
         if r.status_code == 200:
@@ -60,10 +98,7 @@ def fetch_us_tickers() -> list[str]:
     if not tickers:
         for filename in ['nasdaqlisted.txt', 'otherlisted.txt']:
             try:
-                r = _get(
-                    f'https://ftp.nasdaqtrader.com/dynamic/SymDir/{filename}',
-                    timeout=20,
-                )
+                r = _get(f'https://ftp.nasdaqtrader.com/dynamic/SymDir/{filename}', timeout=20)
                 if r.status_code != 200:
                     continue
                 for line in r.text.splitlines()[1:]:
@@ -71,26 +106,15 @@ def fetch_us_tickers() -> list[str]:
                     if len(parts) < 7:
                         continue
                     sym = parts[0].strip().upper()
-                    # nasdaqlisted: col3=TestIssue, col4=FinStatus, col6=ETF
-                    # otherlisted:  col4=ETF, col6=TestIssue
                     if _is_valid(sym):
                         tickers.add(sym)
             except Exception:
                 continue
 
-    # ── Source 3: Wikipedia S&P 500 (last-resort fallback) ───────────────────
+    # ── Source 3: Wikipedia S&P 500 fallback ─────────────────────────────────
     if not tickers:
         try:
-            import pandas as pd
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                tables = pd.read_html(
-                    'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-                )
-            for sym in tables[0]['Symbol'].tolist():
-                clean = str(sym).replace('.', '-').strip().upper()
-                if _is_valid(clean):
-                    tickers.add(clean)
+            tickers.update(fetch_largecap_tickers())
         except Exception:
             pass
 

@@ -60,7 +60,7 @@ with col_actions:
 from config import ALL_UNIVERSES, get_universe, SP500_ADD, ETF_LIST, RUSSELL2000_TOP, NASDAQ100
 
 _STATIC_UNIVERSES = ALL_UNIVERSES  # ['NASDAQ-100', 'S&P 500', 'ETFs', 'Russell 2000']
-_ALL_OPTION       = 'All US Stocks (Yahoo Finance)'
+_ALL_OPTION       = 'All US Large & Mid Cap ($5B+)'
 
 _universe_sizes = {
     'NASDAQ-100':   len(NASDAQ100),
@@ -70,47 +70,33 @@ _universe_sizes = {
 }
 
 
-def _get_us_tickers_cached():
-    """Fetch all US tickers once per session."""
+def _get_largecap_tickers_cached():
+    """Fetch S&P 500 + S&P 400 MidCap once per session (~900 tickers, all $5B+)."""
     if 'us_tickers_all' not in st.session_state:
-        with st.spinner("Fetching all US stock tickers from SEC EDGAR (~6,000 stocks)..."):
-            from engine.universe import fetch_us_tickers
-            st.session_state['us_tickers_all'] = fetch_us_tickers()
+        with st.spinner("Fetching S&P 500 + S&P 400 MidCap from Wikipedia (~900 stocks, $5B+)..."):
+            from engine.universe import fetch_largecap_tickers
+            st.session_state['us_tickers_all'] = fetch_largecap_tickers()
     return st.session_state['us_tickers_all']
 
 
 with st.expander("⚙️ Universe — which stocks to scan", expanded=False):
-    # All US option
+    # All large/mid cap option
     use_all_us = st.checkbox(
         f"🌍 {_ALL_OPTION}",
         value=st.session_state.get('use_all_us', False),
-        help="Downloads the full list of common stocks listed on NYSE + NASDAQ + AMEX (~5,000–7,000 tickers). "
-             "Requires a powerful machine — Railway will OOM. Run locally only.",
+        help="S&P 500 + S&P 400 MidCap — ~900 US stocks with $5B+ market cap. "
+             "Takes ~15–20 min on Railway. Best run locally.",
     )
     st.session_state['use_all_us'] = use_all_us
 
     if use_all_us:
-        _us_tickers = _get_us_tickers_cached()
+        _us_tickers = _get_largecap_tickers_cached()
         n_us = len(_us_tickers)
         selected_universes = [_ALL_OPTION]
-        st.error(
-            f"⛔ **{n_us} tickers** fetched from Yahoo Finance. "
-            "Scanning all of them takes **hours** and requires **8+ GB RAM**. "
-            "Not feasible in one scan — filter below or use a smaller universe.",
-            icon="⛔",
+        st.info(
+            f"📊 **{n_us} tickers** — S&P 500 + S&P 400 MidCap (vse $5B+ market cap). "
+            "Scan traja ~15–20 min in potrebuje ~2–3 GB RAM.",
         )
-        # Let user filter by minimum ticker length (proxy for market cap)
-        min_len = st.select_slider(
-            "Minimum ticker length (shorter = larger companies)",
-            options=[1, 2, 3, 4, 5],
-            value=st.session_state.get('us_min_len', 1),
-        )
-        st.session_state['us_min_len'] = min_len
-        _us_tickers = [t for t in _us_tickers if len(t) >= min_len]
-        n_filtered = len(_us_tickers)
-        st.caption(f"After filter: **{n_filtered} tickers**")
-        if n_filtered > 1000:
-            st.warning("⚠ Still too many for Railway. Recommended: run locally with a fast machine.")
         st.session_state['us_tickers_filtered'] = _us_tickers
 
     else:
