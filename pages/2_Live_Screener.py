@@ -70,14 +70,14 @@ if run_clicked:
         result = run_scan(progress_cb=pcb)
         st.session_state['scan_result'] = result
         pb.progress(1.0)
-        st_txt.success(f'✅ Scan done in {result.runtime_sec:.0f}s · {result.n_tickers} tickers')
+        st_txt.success(f'✅ Scan complete — {result.n_tickers} tickers in {result.runtime_sec:.0f}s')
     except Exception as e:
         st_txt.error(f'Scan failed: {e}')
         st.stop()
 
 result = st.session_state.get('scan_result')
 if result is None:
-    st.info('Klikni **▶ Run Scan** za začetek.')
+    st.info('Click **▶ Run Scan** to start.')
     st.stop()
 
 # ── Export ─────────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ if min_growth:
 if ptf_only:
     stocks = [s for s in stocks if s.in_portfolio]
 
-st.caption(f'Prikazano {len(stocks)} / {result.n_tickers} · Klikni vrstico za podrobnosti')
+st.caption(f'Showing {len(stocks)} / {result.n_tickers} · Click a row for details')
 
 # ── Screener table ─────────────────────────────────────────────────────────────
 RATING_ORDER = {'A+':0,'A':1,'A-':2,'B+':3,'B':4,'B-':5,'C+':6}
@@ -232,21 +232,21 @@ if not selected_ticker:
         selected_ticker = sel_sb
 
 # ── Column glossary ────────────────────────────────────────────────────────────
-with st.expander('📖 Razlaga stolpcev', expanded=False):
+with st.expander('📖 Column Legend', expanded=False):
     st.markdown("""
-| Stolpec | Pomen |
+| Column | Meaning |
 |---|---|
-| **★** | AI zvezde: ★★★★★ = A+, ★★★★ = A, itd. |
-| **Rating** | AI ocena: A+ (najboljši) → C+ |
-| **Conf** | Zaupnost modela 0–100 (NI verjetnost dobička) |
-| **Stable** | Verjetnost stabilnega donosa >15% z DD <10% |
-| **Growth** | Potencial za eksplozivno rast >60% |
-| **Crash%** | Verjetnost padca >30% v 126 dneh |
-| **ER 6m** | Povprečni napovedani donos v 126 dneh |
-| **DD%** | Pričakovani max drawdown |
-| **Kelly** | Priporočena velikost pozicije (max 25%) |
-| **Agree** | Koliko od 4 modelov se strinja (0–4) |
-| **Ptf** | ● = v priporočenem portfelju |
+| **★** | AI stars: ★★★★★ = A+, ★★★★ = A, ★★★ = A−, ★★ = B+, ★ = B |
+| **Rating** | AI composite grade: A+ (strongest) → C+ (weakest) |
+| **Conf** | Overall AI confidence 0–100. NOT a probability of profit — measures model consensus |
+| **Stable** | Score for stable, low-risk return profile. >60 = good stable candidate |
+| **Growth** | Score for explosive upside potential. >60 = high-growth candidate |
+| **Crash%** | Probability of a >30% crash within 126 trading days |
+| **ER 6m** | Average predicted return over 126 trading days (~6 months) |
+| **DD%** | Expected maximum drawdown from peak before horizon end |
+| **Kelly** | Recommended position size as % of portfolio (capped at 25%) |
+| **Agree** | How many of 4 AI models agree on this signal (0 = none, 4 = all) |
+| **Ptf** | ● = included in AI recommended portfolio |
     """)
 
 # ── Detail panel ───────────────────────────────────────────────────────────────

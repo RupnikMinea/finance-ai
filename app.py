@@ -5,7 +5,7 @@ st.set_page_config(
     page_title='Finance AI Terminal',
     page_icon='📈',
     layout='wide',
-    initial_sidebar_bar='expanded',
+    initial_sidebar_state='expanded',
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -80,33 +80,36 @@ def badge(rating: str) -> str:
 
 
 def generate_ai_summary(result) -> str:
-    n_opp       = sum(1 for s in result.stocks if s.confidence >= 60)
-    n_high      = sum(1 for s in result.stocks if s.rating in ('A+', 'A'))
-    top_picks   = [s.ticker for s in result.stocks[:8] if s.confidence >= 55][:5]
-    safe_count  = sum(1 for s in result.stocks if s.stable_score >= 65)
+    n_opp      = sum(1 for s in result.stocks if s.confidence >= 60)
+    n_high     = sum(1 for s in result.stocks if s.rating in ('A+', 'A'))
+    top_picks  = [s.ticker for s in result.stocks[:8] if s.confidence >= 55][:5]
+    safe_count = sum(1 for s in result.stocks if s.stable_score >= 65)
 
     sector_scores: dict[str, list] = {}
     for s in result.stocks:
         sector_scores.setdefault(s.sector, []).append(s.confidence)
-    top_sectors = sorted(sector_scores, key=lambda k: sum(sector_scores[k])/len(sector_scores[k]), reverse=True)[:3]
+    top_sec = sorted(sector_scores, key=lambda k: sum(sector_scores[k])/len(sector_scores[k]), reverse=True)[:2]
 
     qqq_dir = result.market.qqq_ret
     if qqq_dir > 0.5:
-        mood = "Trg je danes **bullish** (QQQ +" + f"{qqq_dir:.1f}%)."
+        mood = f'Market is <b style="color:#69f0ae">bullish</b> today (QQQ +{qqq_dir:.1f}%).'
     elif qqq_dir < -0.5:
-        mood = "Trg je danes **bearish** (QQQ " + f"{qqq_dir:.1f}%)."
+        mood = f'Market is <b style="color:#ef5350">bearish</b> today (QQQ {qqq_dir:.1f}%).'
     else:
-        mood = "Trg je danes **nevtralen**."
+        mood = f'Market is <b style="color:#ffc107">neutral</b> today (QQQ {qqq_dir:+.1f}%).'
 
     parts = [mood]
-    parts.append(f"AI je našel **{n_opp} priložnosti**, od tega **{n_high} z visoko zaupnostjo** (A/A+).")
-    if top_sectors:
-        parts.append(f"Najmočnejši sektorji: **{', '.join(top_sectors[:2])}**.")
+    parts.append(f'AI found <b style="color:#29b6f6">{n_opp} opportunities</b>, '
+                 f'of which <b style="color:#00e676">{n_high} rated A or A+</b>.')
+    if top_sec:
+        parts.append(f'Strongest sectors: <b style="color:#b39ddb">{", ".join(top_sec)}</b>.')
     if safe_count:
-        parts.append(f"**{safe_count} delnic** ima stabilen profil (nizko tveganje, soliden donos).")
+        parts.append(f'<b style="color:#69f0ae">{safe_count} stocks</b> have a stable profile '
+                     f'(low risk + solid return).')
     if top_picks:
-        parts.append(f"Najboljše priložnosti danes: **{', '.join(top_picks)}**.")
-    return "  \n".join(parts)
+        tickers_html = ', '.join(f'<b style="color:#29b6f6">{t}</b>' for t in top_picks)
+        parts.append(f"Today's best opportunities: {tickers_html}.")
+    return '&nbsp;&nbsp;·&nbsp;&nbsp;'.join(parts)
 
 
 # ── Session init ──────────────────────────────────────────────────────────────
@@ -148,7 +151,7 @@ st.markdown(f"""
 <div class="ai-summary">
   <div style="color:#29b6f6;font-size:13px;font-weight:700;letter-spacing:1px;
               margin-bottom:10px">📊 AI ACTION CENTER</div>
-  <div style="color:#e0e0e0;font-size:15px;line-height:1.7">{summary_text.replace('**','<b>').replace('**','</b>').replace('*','<i>').replace('*','</i>')}</div>
+  <div style="color:#e0e0e0;font-size:15px;line-height:1.9">{summary_text}</div>
   <div style="color:#555;font-size:11px;margin-top:10px">
     Last scan: {result.last_update.strftime('%d %b %Y · %H:%M')} · {result.n_tickers} tickers · {result.runtime_sec:.0f}s
   </div>
