@@ -163,6 +163,14 @@ if run_clicked:
 
 result = st.session_state.get('scan_result')
 if result is None:
+    try:
+        from engine.predictor import get_last_results
+        result = get_last_results()
+        if result is not None:
+            st.session_state['scan_result'] = result
+    except Exception:
+        pass
+if result is None:
     st.info('Click **▶ Run Scan** to start.')
     st.stop()
 

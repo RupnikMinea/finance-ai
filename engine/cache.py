@@ -30,8 +30,9 @@ def save_scan(result_dict: dict, path: Path = SCAN_CACHE) -> None:
     if sb:
         try:
             sb.table('scan_cache').upsert({'id': 'latest', 'data': result_dict}).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            import sys
+            print(f'[cache] Supabase save_scan failed: {e}', file=sys.stderr)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(result_dict, f, cls=_Encoder, indent=2)
