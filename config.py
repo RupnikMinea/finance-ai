@@ -22,7 +22,7 @@ PRED_HISTORY   = PRED_DIR / 'prediction_history.json'
 
 # Model params
 DOWNLOAD_START   = '2010-01-01'
-TRAIN_START      = '2016-01-01'
+TRAIN_START      = '2021-01-01'
 SAFE_DD          = 10.0
 SAFE_THRESHOLD   = 0.60
 HORIZON          = 126

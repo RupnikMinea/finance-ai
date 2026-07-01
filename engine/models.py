@@ -1,3 +1,4 @@
+import gc
 import pickle
 import numpy as np
 import lightgbm as lgb
@@ -5,10 +6,10 @@ from pathlib import Path
 from config import ALL_FEATS, MODEL_DIR
 from engine.features import build_train_df, time_weights
 
-LGB_PARAMS = dict(n_estimators=200, learning_rate=0.05, max_depth=5,
-                  num_leaves=31, min_child_samples=40, subsample=0.8,
+LGB_PARAMS = dict(n_estimators=100, learning_rate=0.05, max_depth=4,
+                  num_leaves=15, min_child_samples=40, subsample=0.8,
                   colsample_bytree=0.7, random_state=42, n_jobs=1, verbose=-1,
-                  max_bin=127)
+                  max_bin=63)
 
 
 def train_models(cache: dict, train_s: str, train_e: str) -> tuple[dict, dict]:
@@ -20,22 +21,30 @@ def train_models(cache: dict, train_s: str, train_e: str) -> tuple[dict, dict]:
             if feat in df_stat.columns:
                 train_stats[feat] = {'mean': float(df_stat[feat].mean()),
                                      'std':  float(df_stat[feat].std())}
+    del df_stat; gc.collect()
 
     for target in ['max_upside', 'expected_return', 'expected_dd']:
         df = build_train_df(cache, train_s, train_e, target)
-        if len(df) < 500: continue
+        if len(df) < 500:
+            del df; gc.collect(); continue
         X = df[ALL_FEATS].fillna(0).values; y = df[target].values
+        sw = time_weights(df.index)
+        del df; gc.collect()
         m = lgb.LGBMRegressor(**LGB_PARAMS)
-        m.fit(X, y, sample_weight=time_weights(df.index))
+        m.fit(X, y, sample_weight=sw)
         models[target] = m
+        del X, y, sw; gc.collect()
 
     df = build_train_df(cache, train_s, train_e, 'label_safe')
     if len(df) >= 500:
         X = df[ALL_FEATS].fillna(0).values; y = df['label_safe'].values
+        sw = time_weights(df.index)
+        del df; gc.collect()
         pos_w = (y == 0).sum() / max((y == 1).sum(), 1)
         m = lgb.LGBMClassifier(**LGB_PARAMS, scale_pos_weight=pos_w)
-        m.fit(X, y, sample_weight=time_weights(df.index))
+        m.fit(X, y, sample_weight=sw)
         models['prob_safe'] = m
+        del X, y, sw; gc.collect()
 
     return models, train_stats
 
