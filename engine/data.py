@@ -9,25 +9,31 @@ from config import DOWNLOAD_START, DOWNLOAD_WORKERS, FINNHUB_TOKEN, DATA_SOURCE
 # ── Yahoo Finance ─────────────────────────────────────────────────────────────
 
 def download_yahoo(ticker: str, start_str: str, end_str: str) -> tuple[str, pd.DataFrame | None]:
-    try:
-        p1 = int(datetime.strptime(start_str, '%Y-%m-%d').timestamp())
-        p2 = int(datetime.strptime(end_str,   '%Y-%m-%d').timestamp())
-        url = (f'https://query1.finance.yahoo.com/v8/finance/chart/{ticker}'
-               f'?interval=1d&period1={p1}&period2={p2}')
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
-        r.raise_for_status()
-        res = r.json()['chart']['result'][0]
-        q   = res['indicators']['quote'][0]
-        df  = pd.DataFrame(
-            {'Open': q['open'], 'High': q['high'], 'Low': q['low'],
-             'Close': q['close'], 'Volume': q['volume']},
-            index=pd.to_datetime(res['timestamp'], unit='s').normalize()
-        )
-        df.index.name = 'Date'
-        df = df.dropna()
-        return ticker, df if len(df) >= 200 else None
-    except Exception:
-        return ticker, None
+    p1 = int(datetime.strptime(start_str, '%Y-%m-%d').timestamp())
+    p2 = int(datetime.strptime(end_str,   '%Y-%m-%d').timestamp())
+    url = (f'https://query1.finance.yahoo.com/v8/finance/chart/{ticker}'
+           f'?interval=1d&period1={p1}&period2={p2}')
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if r.status_code == 429:
+                time.sleep(2 + attempt * 4)  # 2s, 6s, 10s backoff
+                continue
+            r.raise_for_status()
+            res = r.json()['chart']['result'][0]
+            q   = res['indicators']['quote'][0]
+            df  = pd.DataFrame(
+                {'Open': q['open'], 'High': q['high'], 'Low': q['low'],
+                 'Close': q['close'], 'Volume': q['volume']},
+                index=pd.to_datetime(res['timestamp'], unit='s').normalize()
+            )
+            df.index.name = 'Date'
+            df = df.dropna()
+            return ticker, df if len(df) >= 200 else None
+        except Exception:
+            if attempt < 2:
+                time.sleep(1)
+    return ticker, None
 
 
 # ── Finnhub ───────────────────────────────────────────────────────────────────

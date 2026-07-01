@@ -147,6 +147,29 @@ def get_today_snapshot(cache: dict) -> pd.DataFrame:
         if row is None or row.isnull().mean() > 0.2:
             continue
         rows[ticker] = row.fillna(0)
+    return snapshot_from_rows(rows)
+
+
+def get_raw_rows(cache: dict) -> dict:
+    """Extract last feature row per ticker without cross-sectional ranking.
+    Used by batch mode in predictor — rows are combined across batches first,
+    then snapshot_from_rows() is called once on the full set.
+    """
+    rows = {}
+    for ticker, df in cache.items():
+        if ticker == 'QQQ':
+            continue
+        if len(df) == 0:
+            continue
+        row = df[FEATURE_COLS].iloc[-1]
+        if row.isnull().mean() > 0.2:
+            continue
+        rows[ticker] = row.fillna(0)
+    return rows
+
+
+def snapshot_from_rows(rows: dict) -> pd.DataFrame:
+    """Build full snapshot with cross-sectional ranks from pre-extracted rows."""
     if len(rows) < 5:
         return pd.DataFrame()
     snap = pd.DataFrame(rows).T

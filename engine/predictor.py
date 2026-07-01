@@ -8,7 +8,9 @@ UI kliče samo:
 """
 
 from __future__ import annotations
+import gc
 import time
+from math import ceil
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from typing import Callable
@@ -16,15 +18,17 @@ from typing import Callable
 import pandas as pd
 
 from config import (NASDAQ100, TRAIN_START, DOWNLOAD_START, MAX_PORTFOLIO,
-                    SCAN_CACHE, JOURNAL_FILE, PRED_HISTORY)
-from engine.data    import download_all, get_market_data
-from engine.features import build_cache, get_today_snapshot
+                    SCAN_CACHE, JOURNAL_FILE, PRED_HISTORY, SECTOR_MAP)
+from engine.data    import download_all, get_market_data, download_yahoo
+from engine.features import build_cache, get_today_snapshot, get_raw_rows, snapshot_from_rows
 from engine.models   import train_models, save_models, load_models, models_are_stale
 from engine.ranking  import predict_and_rank, apply_correlation_filter
 from engine.explain  import compute_shap_reasons, compute_feature_drift, build_stock_card_reasons
 from engine.portfolio import build_portfolio, PortfolioResult
 from engine.cache    import (save_scan, load_scan, scan_age_minutes,
                               append_journal, append_prediction_history)
+
+_BATCH_SIZE = 120  # max tickers per batch — keeps peak RAM under ~250 MB on Railway
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -133,26 +137,15 @@ def run_scan(progress_cb: Callable | None = None,
         if progress_cb:
             progress_cb(step, pct)
 
-    # ── 1. Download ──────────────────────────────────────────────────────────
-    _progress('Downloading prices...', 5)
-
-    def dl_progress(done, total, ok):
-        pct = 5 + int(done / total * 25)
-        _progress(f'Downloading {done}/{total}  ({ok} OK)', pct)
-
-    price_data = download_all(tickers_use, download_end, progress_cb=dl_progress)
+    train_end  = (datetime.today() - timedelta(days=126 + 10)).strftime('%Y-%m-%d')
     market_raw = get_market_data(download_end)
 
-    # QQQ ni v NASDAQ100 listi — prenesi posebej za relativno moč
-    if 'QQQ' not in price_data:
-        from engine.data import download_yahoo
-        _, qqq_dl = download_yahoo('QQQ', DOWNLOAD_START, download_end)
-        if qqq_dl is None:
-            raise RuntimeError('QQQ download failed — check internet connection.')
-        price_data['QQQ'] = qqq_dl
-
-    qqq_df   = price_data['QQQ']
-    qqq_c    = qqq_df['Close']
+    # QQQ — vedno prenesi najprej (potreben za RS features v vsakem batchu)
+    _progress('Downloading QQQ...', 4)
+    _, qqq_dl = download_yahoo('QQQ', DOWNLOAD_START, download_end)
+    if qqq_dl is None:
+        raise RuntimeError('QQQ download failed — check internet connection.')
+    qqq_c    = qqq_dl['Close']
     qqq_rets = {
         '1m':  qqq_c.pct_change(21)  * 100,
         '3m':  qqq_c.pct_change(63)  * 100,
@@ -160,35 +153,90 @@ def run_scan(progress_cb: Callable | None = None,
         '12m': qqq_c.pct_change(252) * 100,
     }
 
-    # ── 2. Features ──────────────────────────────────────────────────────────
-    _progress('Building features...', 32)
-    cache = build_cache(price_data, qqq_rets)
+    large_scan = len(tickers_use) > _BATCH_SIZE
 
-    # ── 3. Models ────────────────────────────────────────────────────────────
-    _progress('Training models...', 50)
-    train_end = (datetime.today() - timedelta(days=126 + 10)).strftime('%Y-%m-%d')
+    if large_scan:
+        # ── Batch mode: 120 tickers at a time to stay within Railway RAM ────
+        # Sort by sector so tickers in the same sector land in the same batch
+        # → sector_rs features computed on more complete peer groups
+        sorted_tickers = sorted(tickers_use, key=lambda t: SECTOR_MAP.get(t, 'Other'))
+        n_batches = ceil(len(sorted_tickers) / _BATCH_SIZE)
+        all_raw_rows: dict = {}
+        close_for_corr: dict = {}
+        models = None; train_stats = None
 
-    if models_are_stale():
-        try:
-            models, train_stats = train_models(cache, TRAIN_START, train_end)
-            save_models(models, train_stats)
-        except MemoryError:
-            raise RuntimeError('Premalo RAM-a za trening — poskusi znova čez minuto.')
+        for bi, start in enumerate(range(0, len(sorted_tickers), _BATCH_SIZE)):
+            batch = sorted_tickers[start:start + _BATCH_SIZE]
+            pct   = 5 + int(bi / n_batches * 55)
+            _progress(f'Batch {bi+1}/{n_batches} — downloading {len(batch)} tickers...', pct)
+
+            price_batch = download_all(batch, download_end)
+            price_batch['QQQ'] = qqq_dl
+
+            _progress(f'Batch {bi+1}/{n_batches} — features...', pct + 2)
+            cache_batch = build_cache(price_batch, qqq_rets)
+
+            if bi == 0:
+                _progress('Loading / training models...', pct + 4)
+                if models_are_stale():
+                    try:
+                        models, train_stats = train_models(cache_batch, TRAIN_START, train_end)
+                        save_models(models, train_stats)
+                    except MemoryError:
+                        raise RuntimeError('Premalo RAM-a za trening — poskusi z manjšim universum.')
+                else:
+                    models, train_stats = load_models()
+
+            all_raw_rows.update(get_raw_rows(cache_batch))
+
+            for t, df in price_batch.items():
+                if t != 'QQQ':
+                    close_for_corr[t] = df['Close'].iloc[-252:]
+
+            del price_batch, cache_batch
+            gc.collect()
+
+        _progress('Building full snapshot...', 62)
+        snap       = snapshot_from_rows(all_raw_rows)
+        price_data = {t: pd.DataFrame({'Close': s}) for t, s in close_for_corr.items()}
+
     else:
-        models, train_stats = load_models()
+        # ── Single-batch mode (original path) ────────────────────────────────
+        _progress('Downloading prices...', 5)
 
-    # ── 4. Snapshot & Predictions ────────────────────────────────────────────
-    _progress('Running AI predictions...', 72)
-    snap       = get_today_snapshot(cache)
+        def dl_progress(done, total, ok):
+            pct = 5 + int(done / total * 25)
+            _progress(f'Downloading {done}/{total}  ({ok} OK)', pct)
+
+        price_data = download_all(tickers_use, download_end, progress_cb=dl_progress)
+        price_data['QQQ'] = qqq_dl
+
+        _progress('Building features...', 32)
+        cache = build_cache(price_data, qqq_rets)
+
+        _progress('Training models...', 50)
+        if models_are_stale():
+            try:
+                models, train_stats = train_models(cache, TRAIN_START, train_end)
+                save_models(models, train_stats)
+            except MemoryError:
+                raise RuntimeError('Premalo RAM-a za trening — poskusi znova čez minuto.')
+        else:
+            models, train_stats = load_models()
+
+        snap = get_today_snapshot(cache)
+
+    # ── 4. Predictions ───────────────────────────────────────────────────────
+    _progress('Running AI predictions...', 65)
     ranked_df  = predict_and_rank(snap, models)
 
     # ── 5. SHAP Explainability ───────────────────────────────────────────────
-    _progress('Computing explanations...', 85)
+    _progress('Computing explanations...', 75)
     shap_reasons = compute_shap_reasons(snap, models, top_n=20)
     drift        = compute_feature_drift(train_stats, snap)
 
     # ── 6. Portfolio ─────────────────────────────────────────────────────────
-    _progress('Building portfolio...', 92)
+    _progress('Building portfolio...', 88)
     portfolio_tickers = apply_correlation_filter(ranked_df, price_data)
     portfolio         = build_portfolio(ranked_df, portfolio_tickers, price_data)
 
