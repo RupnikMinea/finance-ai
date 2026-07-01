@@ -59,6 +59,9 @@ with col_actions:
 # ── Universe selector ──────────────────────────────────────────────────────────
 from config import ALL_UNIVERSES, get_universe, SP500_ADD, ETF_LIST, RUSSELL2000_TOP, NASDAQ100
 
+_STATIC_UNIVERSES = ALL_UNIVERSES  # ['NASDAQ-100', 'S&P 500', 'ETFs', 'Russell 2000']
+_ALL_OPTION       = 'All US Stocks (Yahoo Finance)'
+
 _universe_sizes = {
     'NASDAQ-100':   len(NASDAQ100),
     'S&P 500':      len(SP500_ADD),
@@ -66,38 +69,90 @@ _universe_sizes = {
     'Russell 2000': len(RUSSELL2000_TOP),
 }
 
+
+def _get_us_tickers_cached():
+    """Fetch all US tickers once per session."""
+    if 'us_tickers_all' not in st.session_state:
+        with st.spinner("Fetching all US stock tickers from NASDAQ FTP..."):
+            from engine.universe import fetch_us_tickers
+            st.session_state['us_tickers_all'] = fetch_us_tickers()
+    return st.session_state['us_tickers_all']
+
+
 with st.expander("⚙️ Universe — which stocks to scan", expanded=False):
-    select_all = st.checkbox(
-        "🌍 All universes",
-        value=st.session_state.get('universe_all', False),
-        help="Select all universes at once"
+    # All US option
+    use_all_us = st.checkbox(
+        f"🌍 {_ALL_OPTION}",
+        value=st.session_state.get('use_all_us', False),
+        help="Downloads the full list of common stocks listed on NYSE + NASDAQ + AMEX (~5,000–7,000 tickers). "
+             "Requires a powerful machine — Railway will OOM. Run locally only.",
     )
-    st.session_state['universe_all'] = select_all
+    st.session_state['use_all_us'] = use_all_us
 
-    if select_all:
-        selected_universes = ALL_UNIVERSES
-        st.caption("All universes selected.")
-    else:
-        selected_universes = st.multiselect(
-            "Pick universes",
-            options=ALL_UNIVERSES,
-            default=st.session_state.get('selected_universes', ['NASDAQ-100']),
-            format_func=lambda u: f"{u}  ({_universe_sizes[u]} stocks)",
-            label_visibility='collapsed',
+    if use_all_us:
+        _us_tickers = _get_us_tickers_cached()
+        n_us = len(_us_tickers)
+        selected_universes = [_ALL_OPTION]
+        st.error(
+            f"⛔ **{n_us} tickers** fetched from Yahoo Finance. "
+            "Scanning all of them takes **hours** and requires **8+ GB RAM**. "
+            "Not feasible in one scan — filter below or use a smaller universe.",
+            icon="⛔",
         )
-        if not selected_universes:
-            selected_universes = ['NASDAQ-100']
+        # Let user filter by minimum ticker length (proxy for market cap)
+        min_len = st.select_slider(
+            "Minimum ticker length (shorter = larger companies)",
+            options=[1, 2, 3, 4, 5],
+            value=st.session_state.get('us_min_len', 1),
+        )
+        st.session_state['us_min_len'] = min_len
+        _us_tickers = [t for t in _us_tickers if len(t) >= min_len]
+        n_filtered = len(_us_tickers)
+        st.caption(f"After filter: **{n_filtered} tickers**")
+        if n_filtered > 1000:
+            st.warning("⚠ Still too many for Railway. Recommended: run locally with a fast machine.")
+        st.session_state['us_tickers_filtered'] = _us_tickers
 
-    st.session_state['selected_universes'] = selected_universes
-    n_total = len(get_universe(selected_universes))
-    breakdown = '  +  '.join(f"{u} ({_universe_sizes[u]})" for u in selected_universes)
-    st.caption(f"**{n_total} tickers total** — {breakdown}")
-    if n_total > 300:
-        st.warning(f"⚠ {n_total} tickers — ~10–15 min, zahteva ~1.5 GB RAM. Priporočeno lokalno.")
-    elif n_total > 150:
-        st.warning(f"⚠ {n_total} tickers — ~5–8 min, may OOM on Railway (512 MB). Best run locally.")
-    elif n_total > 100:
-        st.info(f"ℹ {n_total} tickers — ~3–5 min on Railway.")
+    else:
+        # Static curated universes
+        select_all_static = st.checkbox(
+            "✅ All curated universes (NASDAQ-100 + S&P 500 + ETFs + Russell 2000)",
+            value=st.session_state.get('universe_all', False),
+        )
+        st.session_state['universe_all'] = select_all_static
+
+        if select_all_static:
+            selected_universes = _STATIC_UNIVERSES
+        else:
+            selected_universes = st.multiselect(
+                "Pick universes",
+                options=_STATIC_UNIVERSES,
+                default=st.session_state.get('selected_universes', ['NASDAQ-100']),
+                format_func=lambda u: f"{u}  ({_universe_sizes[u]} stocks)",
+                label_visibility='collapsed',
+            )
+            if not selected_universes:
+                selected_universes = ['NASDAQ-100']
+
+        st.session_state['selected_universes'] = selected_universes
+        n_total = len(get_universe(selected_universes))
+        breakdown = '  +  '.join(f"{u} ({_universe_sizes.get(u, '?')})" for u in selected_universes)
+        st.caption(f"**{n_total} tickers total** — {breakdown}")
+        if n_total > 300:
+            st.warning(f"⚠ {n_total} tickers — ~10–15 min, ~1.5 GB RAM. Run locally.")
+        elif n_total > 150:
+            st.warning(f"⚠ {n_total} tickers — ~5–8 min, may OOM on Railway.")
+        elif n_total > 100:
+            st.info(f"ℹ {n_total} tickers — ~3–5 min on Railway.")
+
+
+def _resolve_tickers() -> list:
+    """Return the final ticker list based on current UI state."""
+    if st.session_state.get('use_all_us'):
+        return st.session_state.get('us_tickers_filtered',
+               st.session_state.get('us_tickers_all', []))
+    return get_universe(st.session_state.get('selected_universes', ['NASDAQ-100']))
+
 
 # ── Run Scan logic ─────────────────────────────────────────────────────────────
 if run_clicked:
@@ -109,7 +164,7 @@ if run_clicked:
         pb.progress(pct / 100)
         st_txt.markdown(f'`{step}`')
 
-    _tickers = get_universe(st.session_state.get('selected_universes', ['NASDAQ-100']))
+    _tickers = _resolve_tickers()
 
     try:
         result = run_scan(progress_cb=pcb, tickers=_tickers)
