@@ -118,7 +118,8 @@ class ScanResult:
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
-def run_scan(progress_cb: Callable | None = None) -> ScanResult:
+def run_scan(progress_cb: Callable | None = None,
+             tickers: list | None = None) -> ScanResult:
     """
     Full pipeline: download → features → models → rank → portfolio → ScanResult.
     progress_cb(step: str, pct: int) is called at each stage for UI progress bars.
@@ -126,6 +127,7 @@ def run_scan(progress_cb: Callable | None = None) -> ScanResult:
     t0 = time.time()
     today_str    = datetime.today().strftime('%Y-%m-%d')
     download_end = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
+    tickers_use  = tickers if tickers else NASDAQ100
 
     def _progress(step: str, pct: int):
         if progress_cb:
@@ -138,7 +140,7 @@ def run_scan(progress_cb: Callable | None = None) -> ScanResult:
         pct = 5 + int(done / total * 25)
         _progress(f'Downloading {done}/{total}  ({ok} OK)', pct)
 
-    price_data = download_all(NASDAQ100, download_end, progress_cb=dl_progress)
+    price_data = download_all(tickers_use, download_end, progress_cb=dl_progress)
     market_raw = get_market_data(download_end)
 
     # QQQ ni v NASDAQ100 listi — prenesi posebej za relativno moč

@@ -56,6 +56,34 @@ with col_actions:
     go_portfolio = qa2.button('💼 Portfolio', use_container_width=True)
     export_btn   = qa3.button('📄 Export CSV', use_container_width=True)
 
+# ── Universe selector ──────────────────────────────────────────────────────────
+from config import UNIVERSE_MAP, get_universe, SP500_ADD, ETF_LIST, RUSSELL2000_TOP, NASDAQ100
+
+_universe_sizes = {
+    'NASDAQ-100':          len(NASDAQ100),
+    'S&P 500':             len(SP500_ADD),
+    'ETFs':                len(ETF_LIST),
+    'Russell 2000 Top 80': len(RUSSELL2000_TOP),
+}
+
+with st.expander("⚙️ Universe — which stocks to scan", expanded=False):
+    selected_universes = st.multiselect(
+        "Select universes",
+        options=list(_universe_sizes.keys()),
+        default=st.session_state.get('selected_universes', ['NASDAQ-100']),
+        format_func=lambda u: f"{u}  ({_universe_sizes[u]} stocks)",
+        label_visibility='collapsed',
+    )
+    if not selected_universes:
+        selected_universes = ['NASDAQ-100']
+    st.session_state['selected_universes'] = selected_universes
+    n_total = len(get_universe(selected_universes))
+    st.caption(f"Total: **{n_total} tickers** will be scanned.")
+    if n_total > 200:
+        st.warning(f"⚠ {n_total} tickers — scan will take 5–10 min and requires ~1 GB RAM. Works best locally, may OOM on Railway.")
+    elif n_total > 100:
+        st.info(f"ℹ {n_total} tickers — scan will take ~3–5 min.")
+
 # ── Run Scan logic ─────────────────────────────────────────────────────────────
 if run_clicked:
     from engine.predictor import run_scan
@@ -66,8 +94,10 @@ if run_clicked:
         pb.progress(pct / 100)
         st_txt.markdown(f'`{step}`')
 
+    _tickers = get_universe(st.session_state.get('selected_universes', ['NASDAQ-100']))
+
     try:
-        result = run_scan(progress_cb=pcb)
+        result = run_scan(progress_cb=pcb, tickers=_tickers)
         st.session_state['scan_result'] = result
         pb.progress(1.0)
         st_txt.success(f'✅ Scan complete — {result.n_tickers} tickers in {result.runtime_sec:.0f}s')

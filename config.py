@@ -35,6 +35,109 @@ DRIFT_THRESHOLD  = 2.5
 
 ENS_W = (0.40, 0.35, 0.15, 0.10)   # ER, DynKelly, P(safe), MaxUpside
 
+# ── S&P 500 additions (stocks not in NASDAQ-100) ─────────────────────────────
+SP500_ADD = [
+    # Finance
+    'V','MA','JPM','BAC','WFC','GS','MS','AXP','BLK','SPGI','MCO',
+    'COF','USB','PNC','TFC','ALL','PGR','MET','PRU','AFL','CB','MMC','AON',
+    # Healthcare / Pharma (not biotech — those are in NASDAQ100)
+    'JNJ','UNH','LLY','PFE','ABBV','ABT','TMO','DHR','BMY','MDT',
+    'CVS','CI','HUM','ELV','MOH','ZBH','BSX','EW','STE','HOLX',
+    # Energy
+    'XOM','CVX','COP','EOG','OXY','SLB','HAL','MPC','VLO','PSX',
+    'DVN','APA','BKR','HES','MRO',
+    # Industrials (HON already in NASDAQ100)
+    'GE','CAT','DE','BA','UPS','RTX','LMT','NOC','GD','MMM','ITW',
+    'ETN','EMR','ROK','PH','CMI','IR','TT','CARR','OTIS','URI','GWW',
+    # Consumer Discretionary
+    'HD','NKE','MCD','TGT','CMG','MAR','HLT','RCL','CCL','YUM',
+    'DPZ','DHI','LEN','PHM','F','GM',
+    # Consumer Staples (PEP, MDLZ, KDP, COST already in NASDAQ100)
+    'WMT','PG','KO','PM','MO','EL','CL','GIS','K','KHC','STZ',
+    'TAP','TSN','HRL','SJM','CAG','CPB',
+    # Communication / Media (TMUS, CHTR, NFLX, GOOGL, META already in NASDAQ100)
+    'DIS','CMCSA','T','VZ','WBD','PARA',
+    # Real Estate
+    'PLD','AMT','EQIX','CCI','PSA','EQR','SPG','O','VICI','WELL',
+    'DLR','IRM','SBAC',
+    # Materials
+    'LIN','APD','ECL','SHW','PPG','NEM','FCX','NUE','CF','ALB',
+    'DD','DOW','LYB',
+    # Utilities (AEP, XEL, CEG already in NASDAQ100)
+    'NEE','DUK','SO','D','EXC','SRE','PCG','ED','WEC','ETR',
+    'PPL','CMS','AES','CNP',
+    # IT / Software non-NASDAQ
+    'IBM','ACN','NOW','ORCL','CRM','SAP',
+]
+
+# ── ETFs ──────────────────────────────────────────────────────────────────────
+ETF_LIST = [
+    # Broad market
+    'SPY','IWM','DIA','VTI',
+    # Sector SPDR
+    'XLF','XLK','XLV','XLE','XLI','XLY','XLP','XLU','XLB','XLRE','XLC',
+    # Tech thematic
+    'SOXX','SMH','IGV',
+    # Healthcare thematic
+    'XBI','IBB',
+    # International
+    'EEM','EFA',
+    # Commodity
+    'GLD','SLV','USO',
+    # Bond
+    'TLT',
+    # Thematic
+    'ARKK',
+]
+
+# ── Russell 2000 — top liquid members with sufficient history ─────────────────
+RUSSELL2000_TOP = [
+    # Semiconductor / Hardware small-cap
+    'ACLS','CALX','FORM','KLIC','COHU','CEVA','AMBA','SLAB',
+    # Biotech small-cap
+    'ARWR','PACB','NVAX','FATE','IOVA','EDIT','CRSP','BEAM',
+    # Clean energy small-cap
+    'PLUG','FCEL','BLNK','CHPT','EVGO',
+    # Defense small-cap
+    'AVAV','KTOS',
+    # Consumer small-cap
+    'GME','BOOT',
+    # Energy small-cap
+    'SM','RRC','SWN',
+    # Gaming / Entertainment
+    'DKNG','PENN',
+    # Crypto mining
+    'MARA','RIOT',
+    # Fintech small-cap
+    'HIMS','LC','UPST',
+]
+
+# ── Universe map ──────────────────────────────────────────────────────────────
+UNIVERSE_MAP = {
+    'NASDAQ-100':           None,          # placeholder — set to NASDAQ100 after definition
+    'S&P 500':              SP500_ADD,
+    'ETFs':                 ETF_LIST,
+    'Russell 2000 Top 80':  RUSSELL2000_TOP,
+}
+
+
+def get_universe(selections: list) -> list:
+    """Return combined deduplicated ticker list for the given universe selection names."""
+    from config import NASDAQ100 as _N100
+    mapping = {
+        'NASDAQ-100':           _N100,
+        'S&P 500':              SP500_ADD,
+        'ETFs':                 ETF_LIST,
+        'Russell 2000 Top 80':  RUSSELL2000_TOP,
+    }
+    seen = set(); out = []
+    for sel in selections:
+        for t in mapping.get(sel, []):
+            if t not in seen:
+                seen.add(t); out.append(t)
+    return out or _N100
+
+
 NASDAQ100 = [
     'AAPL','MSFT','NVDA','AMZN','META','GOOGL','GOOG','TSLA','AVGO','COST',
     'NFLX','TMUS','AMD','ADBE','QCOM','CSCO','INTU','TXN','AMAT','ISRG',
@@ -77,6 +180,79 @@ SECTOR_MAP = {
     'CPRT':'Industrial','FAST':'Industrial','HON':'Industrial',
     'PAYX':'Industrial','VRSK':'Industrial','EA':'Gaming','TTWO':'Gaming',
     'AXON':'Defense','FANG':'Energy',
+    # ── S&P 500 Finance ──
+    'V':'Finance','MA':'Finance','JPM':'Finance','BAC':'Finance','WFC':'Finance',
+    'GS':'Finance','MS':'Finance','AXP':'Finance','BLK':'Finance','SPGI':'Finance',
+    'MCO':'Finance','COF':'Finance','USB':'Finance','PNC':'Finance','TFC':'Finance',
+    'ALL':'Finance','PGR':'Finance','MET':'Finance','PRU':'Finance','AFL':'Finance',
+    'CB':'Finance','MMC':'Finance','AON':'Finance',
+    # ── S&P 500 Healthcare ──
+    'JNJ':'Healthcare','UNH':'Healthcare','LLY':'Healthcare','PFE':'Healthcare',
+    'ABBV':'Healthcare','ABT':'Healthcare','TMO':'Healthcare','DHR':'Healthcare',
+    'BMY':'Healthcare','MDT':'Healthcare','CVS':'Healthcare','CI':'Healthcare',
+    'HUM':'Healthcare','ELV':'Healthcare','MOH':'Healthcare','ZBH':'Healthcare',
+    'BSX':'Healthcare','EW':'Healthcare','STE':'Healthcare','HOLX':'Healthcare',
+    # ── S&P 500 Energy ──
+    'XOM':'Energy','CVX':'Energy','COP':'Energy','EOG':'Energy','OXY':'Energy',
+    'SLB':'Energy','HAL':'Energy','MPC':'Energy','VLO':'Energy','PSX':'Energy',
+    'DVN':'Energy','APA':'Energy','BKR':'Energy','HES':'Energy','MRO':'Energy',
+    # ── S&P 500 Industrials ──
+    'GE':'Industrial','CAT':'Industrial','DE':'Industrial','BA':'Industrial',
+    'UPS':'Industrial','RTX':'Industrial','LMT':'Industrial','NOC':'Industrial',
+    'GD':'Industrial','MMM':'Industrial','ITW':'Industrial','ETN':'Industrial',
+    'EMR':'Industrial','ROK':'Industrial','PH':'Industrial','CMI':'Industrial',
+    'IR':'Industrial','TT':'Industrial','CARR':'Industrial','OTIS':'Industrial',
+    'URI':'Industrial','GWW':'Industrial',
+    # ── S&P 500 Consumer ──
+    'HD':'Consumer','NKE':'Consumer','MCD':'Consumer','TGT':'Consumer',
+    'CMG':'Consumer','MAR':'Consumer','HLT':'Consumer','RCL':'Consumer',
+    'CCL':'Consumer','YUM':'Consumer','DPZ':'Consumer','DHI':'Consumer',
+    'LEN':'Consumer','PHM':'Consumer','F':'Consumer','GM':'Consumer',
+    'WMT':'Consumer','PG':'Consumer','KO':'Consumer','PM':'Consumer',
+    'MO':'Consumer','EL':'Consumer','CL':'Consumer','GIS':'Consumer',
+    'K':'Consumer','KHC':'Consumer','STZ':'Consumer','TAP':'Consumer',
+    'TSN':'Consumer','HRL':'Consumer','SJM':'Consumer','CAG':'Consumer','CPB':'Consumer',
+    # ── S&P 500 Media / Comm ──
+    'DIS':'Media','CMCSA':'Media','WBD':'Media','PARA':'Media',
+    'T':'Telecom','VZ':'Telecom',
+    # ── S&P 500 Real Estate ──
+    'PLD':'RealEstate','AMT':'RealEstate','EQIX':'RealEstate','CCI':'RealEstate',
+    'PSA':'RealEstate','EQR':'RealEstate','SPG':'RealEstate','O':'RealEstate',
+    'VICI':'RealEstate','WELL':'RealEstate','DLR':'RealEstate',
+    'IRM':'RealEstate','SBAC':'RealEstate',
+    # ── S&P 500 Materials ──
+    'LIN':'Materials','APD':'Materials','ECL':'Materials','SHW':'Materials',
+    'PPG':'Materials','NEM':'Materials','FCX':'Materials','NUE':'Materials',
+    'CF':'Materials','ALB':'Materials','DD':'Materials','DOW':'Materials','LYB':'Materials',
+    # ── S&P 500 Utilities ──
+    'NEE':'Utilities','DUK':'Utilities','SO':'Utilities','D':'Utilities',
+    'EXC':'Utilities','SRE':'Utilities','PCG':'Utilities','ED':'Utilities',
+    'WEC':'Utilities','ETR':'Utilities','PPL':'Utilities','CMS':'Utilities',
+    'AES':'Utilities','CNP':'Utilities',
+    # ── S&P 500 IT non-NASDAQ ──
+    'IBM':'Software','ACN':'Software','NOW':'Software','ORCL':'Software',
+    'CRM':'Software','SAP':'Software',
+    # ── ETFs ──
+    'SPY':'ETF','IWM':'ETF','DIA':'ETF','VTI':'ETF',
+    'XLF':'ETF','XLK':'ETF','XLV':'ETF','XLE':'ETF','XLI':'ETF',
+    'XLY':'ETF','XLP':'ETF','XLU':'ETF','XLB':'ETF','XLRE':'ETF','XLC':'ETF',
+    'SOXX':'ETF','SMH':'ETF','IGV':'ETF','XBI':'ETF','IBB':'ETF',
+    'EEM':'ETF','EFA':'ETF','GLD':'ETF','SLV':'ETF','USO':'ETF',
+    'TLT':'ETF','ARKK':'ETF',
+    # ── Russell 2000 ──
+    'ACLS':'Semiconductor','CALX':'Software','FORM':'Semiconductor',
+    'KLIC':'Semiconductor','COHU':'Semiconductor','CEVA':'Semiconductor',
+    'AMBA':'Semiconductor','SLAB':'Semiconductor',
+    'ARWR':'Biotech','PACB':'Biotech','NVAX':'Biotech','FATE':'Biotech',
+    'IOVA':'Biotech','EDIT':'Biotech','CRSP':'Biotech','BEAM':'Biotech',
+    'PLUG':'CleanEnergy','FCEL':'CleanEnergy','BLNK':'CleanEnergy',
+    'CHPT':'CleanEnergy','EVGO':'CleanEnergy',
+    'AVAV':'Defense','KTOS':'Defense',
+    'GME':'Consumer','BOOT':'Consumer',
+    'SM':'Energy','RRC':'Energy','SWN':'Energy',
+    'DKNG':'Gaming','PENN':'Gaming',
+    'MARA':'AI_Data','RIOT':'AI_Data',
+    'HIMS':'Healthcare','LC':'Finance','UPST':'Finance',
 }
 
 FEATURE_COLS = [
