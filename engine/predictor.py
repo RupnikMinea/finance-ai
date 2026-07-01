@@ -61,6 +61,8 @@ class StockSignal:
     in_portfolio:    bool  = False
     reasons_pos:     list  = field(default_factory=list)
     reasons_neg:     list  = field(default_factory=list)
+    alpha_sp500:     float = 0.0   # predicted 6m alpha vs SPY
+    alpha_sector:    float = 0.0   # predicted 6m alpha vs sector
     # extra raw fields for details page
     days_since_ath:  float = 0.0
     ath_strength:    float = 0.0
@@ -140,9 +142,10 @@ def run_scan(progress_cb: Callable | None = None,
     train_end  = (datetime.today() - timedelta(days=126 + 10)).strftime('%Y-%m-%d')
     market_raw = get_market_data(download_end)
 
-    # QQQ — vedno prenesi najprej (potreben za RS features v vsakem batchu)
-    _progress('Downloading QQQ...', 4)
+    # QQQ + SPY — vedno prenesi najprej (QQQ za RS features, SPY za alpha target)
+    _progress('Downloading QQQ + SPY...', 4)
     _, qqq_dl = download_yahoo('QQQ', DOWNLOAD_START, download_end)
+    _, spy_dl = download_yahoo('SPY', DOWNLOAD_START, download_end)
     if qqq_dl is None:
         raise RuntimeError('QQQ download failed — check internet connection.')
     qqq_c    = qqq_dl['Close']
@@ -152,6 +155,7 @@ def run_scan(progress_cb: Callable | None = None,
         '6m':  qqq_c.pct_change(126) * 100,
         '12m': qqq_c.pct_change(252) * 100,
     }
+    spy_close = spy_dl['Close'] if spy_dl is not None else None
 
     large_scan = len(tickers_use) > _BATCH_SIZE
 
@@ -174,7 +178,7 @@ def run_scan(progress_cb: Callable | None = None,
             price_batch['QQQ'] = qqq_dl
 
             _progress(f'Batch {bi+1}/{n_batches} — features...', pct + 2)
-            cache_batch = build_cache(price_batch, qqq_rets)
+            cache_batch = build_cache(price_batch, qqq_rets, spy_close=spy_close)
 
             if bi == 0:
                 _progress('Loading / training models...', pct + 4)
@@ -212,7 +216,7 @@ def run_scan(progress_cb: Callable | None = None,
         price_data['QQQ'] = qqq_dl
 
         _progress('Building features...', 32)
-        cache = build_cache(price_data, qqq_rets)
+        cache = build_cache(price_data, qqq_rets, spy_close=spy_close)
 
         _progress('Training models...', 50)
         if models_are_stale():
@@ -265,6 +269,8 @@ def run_scan(progress_cb: Callable | None = None,
             kelly=row['kelly'], rr=row['rr'], agreement=row['agreement'],
             in_portfolio=row['ticker'] in portfolio_tickers,
             reasons_pos=reasons['pos'], reasons_neg=reasons['neg'],
+            alpha_sp500=row.get('alpha_sp500', 0.0),
+            alpha_sector=row.get('alpha_sector', 0.0),
             days_since_ath=row['days_since_ath'], ath_strength=row['ath_strength'],
             dollar_vol_20d=row['dollar_vol_20d'],
             rs_1m=row['rs_1m'], rs_3m=row['rs_3m'],

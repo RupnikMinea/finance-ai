@@ -23,7 +23,8 @@ def train_models(cache: dict, train_s: str, train_e: str) -> tuple[dict, dict]:
                                      'std':  float(df_stat[feat].std())}
     del df_stat; gc.collect()
 
-    for target in ['max_upside', 'expected_return', 'expected_dd']:
+    for target in ['max_upside', 'expected_return', 'expected_dd',
+                    'alpha_sp500', 'alpha_sector']:
         df = build_train_df(cache, train_s, train_e, target)
         if len(df) < 500:
             del df; gc.collect(); continue
@@ -62,7 +63,8 @@ def save_models(models: dict, train_stats: dict, path: Path = MODEL_DIR) -> None
 def load_models(path: Path = MODEL_DIR) -> tuple[dict, dict]:
     path = Path(path)
     models = {}; train_stats = {}
-    for name in ['max_upside', 'expected_return', 'expected_dd', 'prob_safe']:
+    for name in ['max_upside', 'expected_return', 'expected_dd', 'prob_safe',
+                 'alpha_sp500', 'alpha_sector']:
         p = path / f'{name}.pkl'
         if p.exists():
             with open(p, 'rb') as f:

@@ -79,30 +79,67 @@ def compute_features(df: pd.DataFrame, qqq_rets: dict | None = None) -> pd.DataF
 
 
 def compute_targets(close: pd.Series, horizon: int = 126,
-                    safe_pct: float = 0.10) -> tuple:
+                    safe_pct: float = 0.10,
+                    spy_close: pd.Series | None = None,
+                    sector_avg_close: pd.Series | None = None) -> tuple:
     arr = close.values.astype(float); n = len(arr)
     mu  = np.full(n, np.nan); er  = np.full(n, np.nan)
     ls  = np.zeros(n, dtype=np.int8); edd = np.full(n, np.nan)
+    alpha_spy = np.full(n, np.nan); alpha_sec = np.full(n, np.nan)
+
+    spy_arr = (spy_close.reindex(close.index).ffill().values.astype(float)
+               if spy_close is not None else None)
+    sec_arr = (sector_avg_close.reindex(close.index).ffill().values.astype(float)
+               if sector_avg_close is not None else None)
+
     for i in range(n - horizon):
         if arr[i] > 0:
-            fut   = arr[i + 1:i + horizon + 1]
+            fut    = arr[i + 1:i + horizon + 1]
             mu[i]  = (fut.max()      / arr[i] - 1) * 100
             er[i]  = (arr[i+horizon] / arr[i] - 1) * 100
             ls[i]  = int(fut.min()   / arr[i] - 1 >= -safe_pct)
             edd[i] = (fut.min()      / arr[i] - 1) * 100
-    return (pd.Series(mu, index=close.index),
-            pd.Series(er, index=close.index),
-            pd.Series(ls.astype(int), index=close.index),
-            pd.Series(edd, index=close.index))
+            if spy_arr is not None and spy_arr[i] > 0 and spy_arr[i + horizon] > 0:
+                alpha_spy[i] = er[i] - (spy_arr[i + horizon] / spy_arr[i] - 1) * 100
+            if sec_arr is not None and sec_arr[i] > 0 and sec_arr[i + horizon] > 0:
+                alpha_sec[i] = er[i] - (sec_arr[i + horizon] / sec_arr[i] - 1) * 100
+
+    return (pd.Series(mu,              index=close.index),
+            pd.Series(er,              index=close.index),
+            pd.Series(ls.astype(int),  index=close.index),
+            pd.Series(edd,             index=close.index),
+            pd.Series(alpha_spy,       index=close.index),
+            pd.Series(alpha_sec,       index=close.index))
 
 
-def build_cache(price_data: dict, qqq_rets: dict) -> dict:
+def build_cache(price_data: dict, qqq_rets: dict,
+                spy_close: pd.Series | None = None) -> dict:
+    # Sector average close prices for alpha_sector training target
+    sector_closes: dict[str, list] = {}
+    for ticker, df in price_data.items():
+        if ticker in ('QQQ', 'SPY'):
+            continue
+        sector = SECTOR_MAP.get(ticker, 'Other')
+        sector_closes.setdefault(sector, []).append(df['Close'])
+    sector_avg: dict[str, pd.Series] = {
+        s: pd.concat(closes, axis=1).mean(axis=1)
+        for s, closes in sector_closes.items()
+    }
+
     raw = {}
     for ticker, df in price_data.items():
+        if ticker in ('QQQ', 'SPY'):
+            continue
+        sector = SECTOR_MAP.get(ticker, 'Other')
         feats = compute_features(df, qqq_rets)
-        mu, er, ls, edd = compute_targets(df['Close'], HORIZON, SAFE_DD / 100)
-        raw[ticker] = {'feats': feats, 'mu': mu, 'er': er,
-                       'ls': ls, 'edd': edd, 'close': df['Close']}
+        mu, er, ls, edd, alpha_spy_s, alpha_sec_s = compute_targets(
+            df['Close'], HORIZON, SAFE_DD / 100,
+            spy_close=spy_close,
+            sector_avg_close=sector_avg.get(sector),
+        )
+        raw[ticker] = {'feats': feats, 'mu': mu, 'er': er, 'ls': ls, 'edd': edd,
+                       'alpha_spy': alpha_spy_s, 'alpha_sec': alpha_sec_s,
+                       'close': df['Close']}
 
     rs20 = pd.DataFrame({t: raw[t]['feats']['rs_1m'] for t in raw})
     rs60 = pd.DataFrame({t: raw[t]['feats']['rs_3m'] for t in raw})
@@ -120,6 +157,8 @@ def build_cache(price_data: dict, qqq_rets: dict) -> dict:
         comb['expected_return'] = r['er']
         comb['label_safe']      = r['ls']
         comb['expected_dd']     = r['edd']
+        comb['alpha_sp500']     = r['alpha_spy']
+        comb['alpha_sector']    = r['alpha_sec']
         comb['close']           = r['close']
         cache[ticker] = comb
     return cache

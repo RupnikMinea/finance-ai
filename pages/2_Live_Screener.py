@@ -255,6 +255,8 @@ for s in stocks:
         'Growth': round(s.growth_score),
         'Crash%': round(s.crash_prob),
         'ER%':    round(s.expected_return, 1),
+        'αSPY':   round(s.alpha_sp500, 1),
+        'αSec':   round(s.alpha_sector, 1),
         'DD%':    round(s.expected_dd, 1),
         'Kelly':  round(s.kelly, 1),
         'Agree':  s.agreement,
@@ -281,10 +283,10 @@ def color_crash(v):
 
 styled = (df.style
           .map(color_rating, subset=['Rating'])
-          .map(color_er,     subset=['ER%'])
+          .map(color_er,     subset=['ER%', 'αSPY', 'αSec'])
           .map(color_crash,  subset=['Crash%'])
-          .format({'ER%': '{:+.1f}%', 'DD%': '{:.1f}%',
-                   'Kelly': '{:.1f}%', 'Agree': '{}/4',
+          .format({'ER%': '{:+.1f}%', 'αSPY': '{:+.1f}%', 'αSec': '{:+.1f}%',
+                   'DD%': '{:.1f}%', 'Kelly': '{:.1f}%', 'Agree': '{}/4',
                    'Conf': '{:.0f}', 'Stable': '{:.0f}',
                    'Growth': '{:.0f}', 'Crash%': '{:.0f}'}))
 
@@ -303,6 +305,10 @@ event = st.dataframe(
         'Growth': st.column_config.ProgressColumn('Growth', min_value=0, max_value=100, width=85),
         'Crash%': st.column_config.NumberColumn('Crash%', format='%.0f%%', width=70),
         'ER%':    st.column_config.NumberColumn('ER 6m', format='%+.1f%%', width=80),
+        'αSPY':   st.column_config.NumberColumn('αSPY', format='%+.1f%%', width=70,
+                      help='Pričakovana alfa vs SPY (6m) — pozitivna = boljše od trga'),
+        'αSec':   st.column_config.NumberColumn('αSec', format='%+.1f%%', width=70,
+                      help='Pričakovana alfa vs sektor (6m) — pozitivna = boljše od sektorja'),
         'Kelly':  st.column_config.NumberColumn('Kelly', format='%.1f%%', width=65),
         'Agree':  st.column_config.NumberColumn('Agree', format='%d/4', width=60, help='Koliko modelov se strinja (0–4)'),
         '💼':     st.column_config.TextColumn('Ptf', width=35, help='Del priporočenega portfelja'),
@@ -337,6 +343,8 @@ with st.expander('📖 Column Legend', expanded=True):
 | **Growth** | Score for explosive upside potential. >60 = high-growth candidate |
 | **Crash%** | Probability of a >30% crash within 126 trading days |
 | **ER 6m** | Average predicted return over 126 trading days (~6 months) |
+| **αSPY** | Predicted 6m alpha vs SPY — positive means the model expects this stock to beat the market |
+| **αSec** | Predicted 6m alpha vs its sector peers — positive means outperformance within the industry |
 | **DD%** | Expected maximum drawdown from peak before horizon end |
 | **Kelly** | Recommended position size as % of portfolio (capped at 25%) |
 | **Agree** | How many of 4 AI models agree on this signal (0 = none, 4 = all) |
@@ -399,6 +407,20 @@ if selected_ticker:
           <div class="m-box">
             <div class="m-val" style="color:#ccc">{sig.rr:.1f}x</div>
             <div class="m-lbl">R/R</div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="m-box">
+            <div class="m-val" style="color:{'#69f0ae' if sig.alpha_sp500 > 0 else '#ef5350'}">{sig.alpha_sp500:+.1f}%</div>
+            <div class="m-lbl">α vs SPY</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:{'#69f0ae' if sig.alpha_sector > 0 else '#ef5350'}">{sig.alpha_sector:+.1f}%</div>
+            <div class="m-lbl">α vs Sektor</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ccc">{sig.agreement}/4</div>
+            <div class="m-lbl">Modeli</div>
           </div>
         </div>
         <div class="metric-row">

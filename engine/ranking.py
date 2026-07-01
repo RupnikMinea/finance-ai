@@ -18,11 +18,13 @@ def predict_and_rank(snap: pd.DataFrame, models: dict) -> pd.DataFrame:
     X = snap[ALL_FEATS].fillna(0)
     n = len(snap)
 
-    mu_p  = models['max_upside'].predict(X)           if 'max_upside'      in models else np.zeros(n)
-    er_p  = models['expected_return'].predict(X)      if 'expected_return' in models else np.zeros(n)
-    edd_p = models['expected_dd'].predict(X)          if 'expected_dd'     in models else np.full(n, -10.0)
-    ps_p  = (models['prob_safe'].predict_proba(X)[:, 1]
-             if 'prob_safe' in models else np.full(n, 0.5))
+    mu_p      = models['max_upside'].predict(X)           if 'max_upside'      in models else np.zeros(n)
+    er_p      = models['expected_return'].predict(X)      if 'expected_return' in models else np.zeros(n)
+    edd_p     = models['expected_dd'].predict(X)          if 'expected_dd'     in models else np.full(n, -10.0)
+    ps_p      = (models['prob_safe'].predict_proba(X)[:, 1]
+                 if 'prob_safe' in models else np.full(n, 0.5))
+    aspy_p    = models['alpha_sp500'].predict(X)          if 'alpha_sp500'     in models else None
+    asec_p    = models['alpha_sector'].predict(X)         if 'alpha_sector'    in models else None
 
     edd_p = np.clip(edd_p, -70.0, -0.5)
     rr    = er_p / np.abs(edd_p)
@@ -37,9 +39,14 @@ def predict_and_rank(snap: pd.DataFrame, models: dict) -> pd.DataFrame:
         mn, mx = arr.min(), arr.max()
         return (arr - mn) / (mx - mn + 1e-9) * 100
 
-    w_er, w_k, w_ps, w_u = ENS_W
+    w_er, w_k, w_ps, w_u, w_aspy, w_asec = ENS_W
     r_er = rk(er_p); r_k = rk(kelly_dyn); r_ps = rk(ps_p); r_u = rk(mu_p)
-    ensemble   = w_er*r_er + w_k*r_k + w_ps*r_ps + w_u*r_u
+    ensemble = w_er*r_er + w_k*r_k + w_ps*r_ps + w_u*r_u
+    if aspy_p is not None:
+        ensemble += w_aspy * rk(aspy_p)
+    if asec_p is not None:
+        ensemble += w_asec * rk(asec_p)
+
     confidence = 0.35*n100(ensemble) + 0.25*n100(ps_p) + 0.20*n100(kelly_dyn) + 0.20*n100(rr)
 
     # Stable Score: high p_safe + low expected_dd + moderate return
@@ -74,6 +81,8 @@ def predict_and_rank(snap: pd.DataFrame, models: dict) -> pd.DataFrame:
             'rr':              round(float(rr[i]), 2),
             'ensemble':        round(float(ensemble[i]), 4),
             'agreement':       int(agree[i]),
+            'alpha_sp500':     round(float(aspy_p[i]), 1) if aspy_p is not None else 0.0,
+            'alpha_sector':    round(float(asec_p[i]), 1) if asec_p is not None else 0.0,
             'days_since_ath':  round(float(snap['days_since_ath'].iloc[i]), 0),
             'ath_strength':    round(float(snap['ath_strength'].iloc[i]), 1),
             'dollar_vol_20d':  round(float(snap['dollar_vol_20d'].iloc[i]), 0),

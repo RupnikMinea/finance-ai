@@ -33,7 +33,8 @@ MAX_CORR         = 0.70
 MAX_PER_SECTOR   = 2
 DRIFT_THRESHOLD  = 2.5
 
-ENS_W = (0.40, 0.35, 0.15, 0.10)   # ER, DynKelly, P(safe), MaxUpside
+ENS_W = (0.25, 0.25, 0.10, 0.05, 0.25, 0.10)
+# ER(abs), DynKelly, P(safe), MaxUpside, AlphaSPY, AlphaSector
 
 # ── S&P 500 additions (stocks not in NASDAQ-100) — full S&P 500 coverage ─────
 SP500_ADD = [
