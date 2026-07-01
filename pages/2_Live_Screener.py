@@ -3,226 +3,384 @@ import pandas as pd
 
 st.set_page_config(page_title='Live Screener', page_icon='📈', layout='wide')
 
-# ── Run Scan ──────────────────────────────────────────────────────────────────
-col_title, col_btn = st.columns([4, 1])
-col_title.title('📈 Live Screener')
+# ── CSS ────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+.stApp { background: #0a0a14; color: #e0e0e0; }
+.badge { display:inline-block; padding:3px 10px; border-radius:20px;
+         font-weight:700; font-size:12px; }
+.badge-Aplus  { background:#00e676; color:#000; }
+.badge-A      { background:#69f0ae; color:#000; }
+.badge-Aminus { background:#b9f6ca; color:#000; }
+.badge-Bplus  { background:#ffeb3b; color:#000; }
+.badge-B      { background:#ffc107; color:#000; }
+.badge-Bminus { background:#ff9800; color:#000; }
+.badge-Cplus  { background:#ef5350; color:#fff; }
+.detail-card {
+    background:#12122a; border:1px solid #1e1e3a; border-radius:12px; padding:20px;
+}
+.metric-row { display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; }
+.m-box { background:#0d0d1a; border:1px solid #1e1e3a; border-radius:8px;
+         padding:8px 14px; text-align:center; flex:1; min-width:80px; }
+.m-val { font-size:18px; font-weight:700; }
+.m-lbl { font-size:10px; color:#666; text-transform:uppercase; margin-top:2px; }
+.scan-summary {
+    background:linear-gradient(135deg,#0a1a2e,#12122a);
+    border:1px solid #1e3a5f; border-radius:12px; padding:16px 20px; margin-bottom:16px;
+}
+.filter-bar {
+    background:#0d0d1a; border:1px solid #1e1e3a; border-radius:10px;
+    padding:12px 16px; margin-bottom:12px;
+}
+div[data-testid="stDataFrame"] table th {
+    background:#1a1a2e !important; color:#b39ddb !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-with col_btn:
-    st.markdown('<div style="margin-top:14px"></div>', unsafe_allow_html=True)
-    run_clicked = st.button('▶ Run Live Scan', type='primary', use_container_width=True)
 
+def badge(rating: str) -> str:
+    cls = {'A+':'Aplus','A':'A','A-':'Aminus','B+':'Bplus',
+           'B':'B','B-':'Bminus','C+':'Cplus'}.get(rating, 'Cplus')
+    return f'<span class="badge badge-{cls}">{rating}</span>'
+
+
+# ── Top bar: title + Quick Actions ────────────────────────────────────────────
+col_title, col_actions = st.columns([3, 2])
+col_title.markdown("## 📈 Live Screener")
+
+with col_actions:
+    st.markdown('<div style="margin-top:6px"></div>', unsafe_allow_html=True)
+    qa1, qa2, qa3 = st.columns(3)
+    run_clicked = qa1.button('▶ Run Scan', type='primary', use_container_width=True)
+    go_portfolio = qa2.button('💼 Portfolio', use_container_width=True)
+    export_btn   = qa3.button('📄 Export CSV', use_container_width=True)
+
+# ── Run Scan logic ─────────────────────────────────────────────────────────────
 if run_clicked:
     from engine.predictor import run_scan
-    progress_bar = st.progress(0)
-    status_text  = st.empty()
+    pb = st.progress(0)
+    st_txt = st.empty()
 
-    def progress_cb(step: str, pct: int):
-        progress_bar.progress(pct / 100)
-        status_text.markdown(f'`{step}`')
+    def pcb(step, pct):
+        pb.progress(pct / 100)
+        st_txt.markdown(f'`{step}`')
 
     try:
-        result = run_scan(progress_cb=progress_cb)
+        result = run_scan(progress_cb=pcb)
         st.session_state['scan_result'] = result
-        progress_bar.progress(1.0)
-        status_text.success(f'Done in {result.runtime_sec:.0f}s · {result.n_tickers} tickers')
+        pb.progress(1.0)
+        st_txt.success(f'✅ Scan done in {result.runtime_sec:.0f}s · {result.n_tickers} tickers')
     except Exception as e:
-        status_text.error(f'Scan failed: {e}')
+        st_txt.error(f'Scan failed: {e}')
         st.stop()
 
 result = st.session_state.get('scan_result')
 if result is None:
-    st.info('Click **▶ Run Live Scan** to start.')
+    st.info('Klikni **▶ Run Scan** za začetek.')
     st.stop()
 
-# ── Filters ───────────────────────────────────────────────────────────────────
-with st.expander('Filters', expanded=False):
-    fc1, fc2, fc3, fc4 = st.columns(4)
-    min_conf    = fc1.slider('Min Confidence', 0, 100, 0)
-    min_stable  = fc2.slider('Min Stable Score', 0, 100, 0)
-    min_growth  = fc3.slider('Min Growth Score', 0, 100, 0)
-    max_crash   = fc4.slider('Max Crash Risk', 0, 100, 100)
-    selected_sectors = st.multiselect(
-        'Sectors', sorted({s.sector for s in result.stocks}), default=[]
-    )
+# ── Export ─────────────────────────────────────────────────────────────────────
+if export_btn:
+    rows_exp = [{'Ticker': s.ticker, 'Rating': s.rating, 'Sector': s.sector,
+                 'Confidence': s.confidence, 'Exp Return': s.expected_return,
+                 'Exp DD': s.expected_dd, 'Stable': s.stable_score,
+                 'Growth': s.growth_score, 'Crash%': s.crash_prob, 'Kelly': s.kelly}
+                for s in result.stocks]
+    csv = pd.DataFrame(rows_exp).to_csv(index=False)
+    st.download_button('⬇ Download CSV', csv, 'finance_ai_scan.csv', 'text/csv')
 
+# ── AI Post-scan summary ───────────────────────────────────────────────────────
+n_aplus = sum(1 for s in result.stocks if s.rating in ('A+', 'A'))
+n_opp   = sum(1 for s in result.stocks if s.confidence >= 55)
+top5    = [s.ticker for s in result.stocks[:6] if s.confidence >= 50][:5]
+sector_scores: dict[str, list] = {}
+for s in result.stocks:
+    sector_scores.setdefault(s.sector, []).append(s.confidence)
+top_sec = sorted(sector_scores, key=lambda k: sum(sector_scores[k])/len(sector_scores[k]), reverse=True)[:2]
+
+st.markdown(f"""
+<div class="scan-summary">
+  <span style="color:#29b6f6;font-weight:700;font-size:13px">📊 AI SUMMARY</span>
+  &nbsp;&nbsp;
+  <span style="color:#ccc;font-size:14px">
+    Najdenih <b style="color:#69f0ae">{n_opp} priložnosti</b>,
+    od tega <b style="color:#00e676">{n_aplus} z oceno A/A+</b>.
+    {'Sektorji: <b>' + ', '.join(top_sec) + '</b>.' if top_sec else ''}
+    {'Top picks: <b style="color:#29b6f6">' + ', '.join(top5) + '</b>.' if top5 else ''}
+  </span>
+  <span style="color:#555;font-size:11px;float:right">
+    {result.last_update.strftime('%d %b · %H:%M')} · {result.n_tickers} tickers
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Filter bar (always visible) ───────────────────────────────────────────────
+st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
+f1, f2, f3, f4, f5, f6 = st.columns([2, 2, 2, 1, 1, 1])
+search_q        = f1.text_input('🔍 Search', placeholder='AAPL, NVDA...', label_visibility='collapsed')
+sectors_all     = sorted({s.sector for s in result.stocks})
+sel_sectors     = f2.multiselect('Sector', sectors_all, placeholder='Sector', label_visibility='collapsed')
+rating_filter   = f3.multiselect('Rating', ['A+','A','A-','B+','B','B-','C+'], placeholder='Rating', label_visibility='collapsed')
+min_stable      = f4.number_input('Min Stable', 0, 100, 0, step=10, label_visibility='collapsed')
+min_growth      = f5.number_input('Min Growth', 0, 100, 0, step=10, label_visibility='collapsed')
+ptf_only        = f6.checkbox('Portfolio only')
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Apply filters ──────────────────────────────────────────────────────────────
 stocks = result.stocks
-stocks = [s for s in stocks if s.confidence >= min_conf]
-stocks = [s for s in stocks if s.stable_score >= min_stable]
-stocks = [s for s in stocks if s.growth_score >= min_growth]
-stocks = [s for s in stocks if s.crash_prob <= max_crash]
-if selected_sectors:
-    stocks = [s for s in stocks if s.sector in selected_sectors]
+if search_q:
+    q = search_q.upper()
+    stocks = [s for s in stocks if q in s.ticker or q in s.sector.upper()]
+if sel_sectors:
+    stocks = [s for s in stocks if s.sector in sel_sectors]
+if rating_filter:
+    stocks = [s for s in stocks if s.rating in rating_filter]
+if min_stable:
+    stocks = [s for s in stocks if s.stable_score >= min_stable]
+if min_growth:
+    stocks = [s for s in stocks if s.growth_score >= min_growth]
+if ptf_only:
+    stocks = [s for s in stocks if s.in_portfolio]
 
-st.caption(f'Showing {len(stocks)} of {result.n_tickers} tickers · '
-           f'Last update: {result.last_update.strftime("%d %b %H:%M")}')
+st.caption(f'Prikazano {len(stocks)} / {result.n_tickers} · Klikni vrstico za podrobnosti')
 
-# ── Screener Table ─────────────────────────────────────────────────────────────
-RATING_ORDER = {'A+': 0, 'A': 1, 'A-': 2, 'B+': 3, 'B': 4, 'B-': 5, 'C+': 6}
+# ── Screener table ─────────────────────────────────────────────────────────────
+RATING_ORDER = {'A+':0,'A':1,'A-':2,'B+':3,'B':4,'B-':5,'C+':6}
 
 rows = []
 for s in stocks:
+    stars = '★' * max(0, 5 - RATING_ORDER.get(s.rating, 6))
     rows.append({
-        'Ticker':   s.ticker,
-        'Rating':   s.rating,
-        'Sector':   s.sector,
-        'Conf':     s.confidence,
-        'Stable':   s.stable_score,
-        'Growth':   s.growth_score,
-        'Crash%':   s.crash_prob,
-        'Exp Ret':  s.expected_return,
-        'Exp DD':   s.expected_dd,
-        'CI':       f'{s.ci_low:.0f}–{s.ci_high:.0f}%',
-        'Kelly':    s.kelly,
-        'Agree':    s.agreement,
-        'Portfolio':'★' if s.in_portfolio else '',
+        'Stars':  stars,
+        'Ticker': s.ticker,
+        'Rating': s.rating,
+        'Sector': s.sector,
+        'Conf':   round(s.confidence),
+        'Stable': round(s.stable_score),
+        'Growth': round(s.growth_score),
+        'Crash%': round(s.crash_prob),
+        'ER%':    round(s.expected_return, 1),
+        'DD%':    round(s.expected_dd, 1),
+        'Kelly':  round(s.kelly, 1),
+        'Agree':  s.agreement,
+        '💼':     '●' if s.in_portfolio else '',
     })
 
-df_show = pd.DataFrame(rows)
+df = pd.DataFrame(rows)
 
-# Style
-def color_rating(val):
-    colors = {'A+': '#00e676', 'A': '#69f0ae', 'A-': '#b9f6ca',
-              'B+': '#ffeb3b', 'B': '#ffc107', 'B-': '#ff9800', 'C+': '#ef5350'}
-    c = colors.get(val, '#aaa')
-    return f'color: {c}; font-weight: 700'
+def color_rating(v):
+    c = {'A+':'#00e676','A':'#69f0ae','A-':'#b9f6ca',
+         'B+':'#ffeb3b','B':'#ffc107','B-':'#ff9800','C+':'#ef5350'}.get(v,'#aaa')
+    return f'color:{c};font-weight:700'
 
-def color_return(val):
-    if isinstance(val, (int, float)):
-        return f'color: {"#00e676" if val > 0 else "#ef5350"}'
+def color_er(v):
+    if isinstance(v, float): return f'color:{"#69f0ae" if v>0 else "#ef5350"}'
     return ''
 
-def color_crash(val):
-    if isinstance(val, (int, float)):
-        if val >= 70: return 'color: #ef5350; font-weight: 700'
-        if val >= 50: return 'color: #ff9800'
+def color_crash(v):
+    if isinstance(v, (int,float)):
+        if v >= 70: return 'color:#ef5350;font-weight:700'
+        if v >= 50: return 'color:#ff9800'
+        if v <= 25: return 'color:#69f0ae'
     return ''
 
-styled = (df_show.style
+styled = (df.style
           .map(color_rating, subset=['Rating'])
-          .map(color_return, subset=['Exp Ret'])
+          .map(color_er,     subset=['ER%'])
           .map(color_crash,  subset=['Crash%'])
-          .format({'Conf': '{:.0f}', 'Stable': '{:.0f}', 'Growth': '{:.0f}',
-                   'Crash%': '{:.0f}', 'Exp Ret': '{:+.1f}%',
-                   'Exp DD': '{:.1f}%', 'Kelly': '{:.1f}%', 'Agree': '{}/4'}))
+          .format({'ER%': '{:+.1f}%', 'DD%': '{:.1f}%',
+                   'Kelly': '{:.1f}%', 'Agree': '{}/4',
+                   'Conf': '{:.0f}', 'Stable': '{:.0f}',
+                   'Growth': '{:.0f}', 'Crash%': '{:.0f}'}))
 
-st.dataframe(styled, use_container_width=True, height=500,
-             column_config={
-                 'Ticker':   st.column_config.TextColumn('Ticker', width=70),
-                 'Rating':   st.column_config.TextColumn('Rating', width=60),
-                 'Conf':     st.column_config.NumberColumn('Conf', format='%.0f', width=55),
-                 'Stable':   st.column_config.ProgressColumn('Stable', min_value=0, max_value=100, width=90),
-                 'Growth':   st.column_config.ProgressColumn('Growth', min_value=0, max_value=100, width=90),
-                 'Crash%':   st.column_config.NumberColumn('Crash%', format='%.0f%%', width=70),
-                 'Exp Ret':  st.column_config.NumberColumn('Exp Ret', format='%+.1f%%', width=75),
-                 'Kelly':    st.column_config.NumberColumn('Kelly', format='%.1f%%', width=60),
-                 'Portfolio':st.column_config.TextColumn('Ptf', width=35),
-             })
+event = st.dataframe(
+    styled,
+    use_container_width=True,
+    height=420,
+    on_select='rerun',
+    selection_mode='single-row',
+    column_config={
+        'Stars':  st.column_config.TextColumn('★', width=60),
+        'Ticker': st.column_config.TextColumn('Ticker', width=70),
+        'Rating': st.column_config.TextColumn('Rating', width=65),
+        'Conf':   st.column_config.ProgressColumn('Conf', min_value=0, max_value=100, width=85),
+        'Stable': st.column_config.ProgressColumn('Stable', min_value=0, max_value=100, width=85),
+        'Growth': st.column_config.ProgressColumn('Growth', min_value=0, max_value=100, width=85),
+        'Crash%': st.column_config.NumberColumn('Crash%', format='%.0f%%', width=70),
+        'ER%':    st.column_config.NumberColumn('ER 6m', format='%+.1f%%', width=80),
+        'Kelly':  st.column_config.NumberColumn('Kelly', format='%.1f%%', width=65),
+        'Agree':  st.column_config.NumberColumn('Agree', format='%d/4', width=60, help='Koliko modelov se strinja (0–4)'),
+        '💼':     st.column_config.TextColumn('Ptf', width=35, help='Del priporočenega portfelja'),
+    }
+)
 
-# ── Stock Detail ──────────────────────────────────────────────────────────────
-st.markdown('---')
-st.markdown('### Stock Details')
+# ── Stock detail panel (click on row) ─────────────────────────────────────────
+selected_ticker = None
+if event and event.selection and event.selection.rows:
+    idx = event.selection.rows[0]
+    if idx < len(stocks):
+        selected_ticker = stocks[idx].ticker
 
-tickers_available = [s.ticker for s in stocks]
-selected = st.selectbox('Select ticker', [''] + tickers_available,
-                        index=0, label_visibility='collapsed')
+# Fallback: selectbox
+if not selected_ticker:
+    sel_sb = st.selectbox(
+        'Ali izberi ročno:', [''] + [s.ticker for s in stocks],
+        index=0, label_visibility='visible'
+    )
+    if sel_sb:
+        selected_ticker = sel_sb
 
-if selected:
-    sig = result.get(selected)
+# ── Column glossary ────────────────────────────────────────────────────────────
+with st.expander('📖 Razlaga stolpcev', expanded=False):
+    st.markdown("""
+| Stolpec | Pomen |
+|---|---|
+| **★** | AI zvezde: ★★★★★ = A+, ★★★★ = A, itd. |
+| **Rating** | AI ocena: A+ (najboljši) → C+ |
+| **Conf** | Zaupnost modela 0–100 (NI verjetnost dobička) |
+| **Stable** | Verjetnost stabilnega donosa >15% z DD <10% |
+| **Growth** | Potencial za eksplozivno rast >60% |
+| **Crash%** | Verjetnost padca >30% v 126 dneh |
+| **ER 6m** | Povprečni napovedani donos v 126 dneh |
+| **DD%** | Pričakovani max drawdown |
+| **Kelly** | Priporočena velikost pozicije (max 25%) |
+| **Agree** | Koliko od 4 modelov se strinja (0–4) |
+| **Ptf** | ● = v priporočenem portfelju |
+    """)
+
+# ── Detail panel ───────────────────────────────────────────────────────────────
+if selected_ticker:
+    sig = result.get(selected_ticker)
     if sig is None:
-        st.warning('Ticker not found in scan results.')
+        st.warning('Ticker ne najdem v rezultatih.')
         st.stop()
 
-    col_left, col_right = st.columns([1, 1])
+    st.markdown('---')
 
+    # Header
+    badge_html = badge(sig.rating)
+    r_color = ('#00e676' if sig.rating in ('A+','A') else
+               '#ffeb3b' if sig.rating in ('A-','B+') else
+               '#ff9800' if sig.rating == 'B' else '#ef5350')
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <span style="font-size:32px;font-weight:800;color:#29b6f6">{sig.ticker}</span>
+      {badge_html}
+      <span style="color:#888;font-size:14px">{sig.sector}</span>
+      {'<span style="color:#69f0ae;font-size:12px;background:#0a2a1a;padding:3px 10px;border-radius:20px">💼 In Portfolio</span>' if sig.in_portfolio else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_left, col_mid, col_right = st.columns([1, 1, 1])
+
+    # Metrics
     with col_left:
-        r_color = ('#00e676' if sig.rating in ('A+','A') else
-                   '#ffeb3b' if sig.rating in ('A-','B+') else '#ff9800')
+        st.markdown('<div class="detail-card">', unsafe_allow_html=True)
         st.markdown(f"""
-        <div style="background:#12122a;border:1px solid #1e1e3a;border-radius:12px;padding:20px">
-          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-            <span style="font-size:28px;font-weight:700;color:#29b6f6">{sig.ticker}</span>
-            <span style="font-size:24px;color:{r_color};font-weight:700">{sig.rating}</span>
-            <span style="font-size:13px;color:#888">{sig.sector}</span>
+        <div class="metric-row">
+          <div class="m-box">
+            <div class="m-val" style="color:#29b6f6">{sig.confidence:.0f}</div>
+            <div class="m-lbl">Confidence</div>
           </div>
-          <table style="width:100%;border-collapse:collapse;font-size:14px">
-            <tr><td style="color:#888;padding:5px 0">Confidence</td>
-                <td style="color:#ccc;font-weight:600">{sig.confidence:.0f}/100</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Expected Return</td>
-                <td style="color:#69f0ae;font-weight:600">+{sig.expected_return:.1f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Range (CI)</td>
-                <td style="color:#aaa">{sig.ci_low:.0f}% – {sig.ci_high:.0f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Expected DD</td>
-                <td style="color:#ef9a9a;font-weight:600">{sig.expected_dd:.1f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Max Upside</td>
-                <td style="color:#b39ddb">+{sig.max_upside:.1f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Reward / Risk</td>
-                <td style="color:#ccc">{sig.rr:.2f}x</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Kelly</td>
-                <td style="color:#b39ddb">{sig.kelly:.1f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Stable Score</td>
-                <td style="color:#69f0ae">{sig.stable_score:.0f}</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Growth Score</td>
-                <td style="color:#ffd700">{sig.growth_score:.0f}</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Crash Risk</td>
-                <td style="color:#ef5350">{sig.crash_prob:.0f}%</td></tr>
-            <tr><td style="color:#888;padding:5px 0">Model Agreement</td>
-                <td style="color:#ccc">{sig.agreement}/4</td></tr>
-          </table>
-        </div>""", unsafe_allow_html=True)
+          <div class="m-box">
+            <div class="m-val" style="color:#69f0ae">+{sig.expected_return:.0f}%</div>
+            <div class="m-lbl">Exp Return</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ef9a9a">{sig.expected_dd:.0f}%</div>
+            <div class="m-lbl">Exp DD</div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="m-box">
+            <div class="m-val" style="color:#b39ddb">{sig.kelly:.0f}%</div>
+            <div class="m-lbl">Kelly</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ffd700">{sig.max_upside:.0f}%</div>
+            <div class="m-lbl">Max Upside</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ccc">{sig.rr:.1f}x</div>
+            <div class="m-lbl">R/R</div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="m-box">
+            <div class="m-val" style="color:#69f0ae">{sig.stable_score:.0f}</div>
+            <div class="m-lbl">Stable</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ffd700">{sig.growth_score:.0f}</div>
+            <div class="m-lbl">Growth</div>
+          </div>
+          <div class="m-box">
+            <div class="m-val" style="color:#ef5350">{sig.crash_prob:.0f}%</div>
+            <div class="m-lbl">Crash%</div>
+          </div>
+        </div>
+        <div style="color:#555;font-size:12px;margin-top:8px">
+          Model agreement: <b style="color:#ccc">{sig.agreement}/4</b> &nbsp;·&nbsp;
+          CI: <b style="color:#ccc">{sig.ci_low:.0f}%–{sig.ci_high:.0f}%</b>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
+    # Why AI likes it
+    with col_mid:
+        pos_html = ''.join(
+            f'<div style="color:#69f0ae;padding:5px 0;border-bottom:1px solid #1a1a2e">✓ {r}</div>'
+            for r in sig.reasons_pos
+        )
+        neg_html = ''.join(
+            f'<div style="color:#ef9a9a;padding:5px 0;border-bottom:1px solid #1a1a2e">✗ {r}</div>'
+            for r in sig.reasons_neg
+        )
+        st.markdown(f"""
+        <div class="detail-card">
+          <div style="color:#b39ddb;font-weight:700;margin-bottom:12px;font-size:14px">
+            🤖 Why AI {'rates' if sig.confidence >= 60 else 'flags'} {sig.ticker}
+          </div>
+          {pos_html or '<div style="color:#555;font-size:12px">No positive signals</div>'}
+          {neg_html}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Prediction range
     with col_right:
-        # Why AI likes it
-        pos_html = ''.join(f'<div style="color:#69f0ae;margin:4px 0">✓ {r}</div>'
-                           for r in sig.reasons_pos)
-        neg_html = ''.join(f'<div style="color:#ef9a9a;margin:4px 0">✗ {r}</div>'
-                           for r in sig.reasons_neg)
-        st.markdown(f"""
-        <div style="background:#12122a;border:1px solid #1e1e3a;border-radius:12px;
-                    padding:20px;margin-bottom:16px">
-          <div style="color:#b39ddb;font-weight:700;margin-bottom:12px">
-            Why AI {'likes' if sig.confidence >= 60 else 'flags'} {sig.ticker}
-          </div>
-          {pos_html}
-          {neg_html if neg_html else ''}
-        </div>""", unsafe_allow_html=True)
-
-        # Prediction range bar
         total = sig.ci_high - sig.ci_low
-        median_pct = (sig.expected_return - sig.ci_low) / max(total, 1) * 100
+        med_pct = (sig.expected_return - sig.ci_low) / max(total, 1) * 100
         st.markdown(f"""
-        <div style="background:#12122a;border:1px solid #1e1e3a;border-radius:12px;padding:20px">
-          <div style="color:#b39ddb;font-weight:700;margin-bottom:12px">Prediction Range</div>
-          <div style="display:flex;justify-content:space-between;color:#888;font-size:12px">
+        <div class="detail-card">
+          <div style="color:#b39ddb;font-weight:700;margin-bottom:16px;font-size:14px">
+            📊 Prediction Range (6M)
+          </div>
+          <div style="display:flex;justify-content:space-between;color:#888;font-size:12px;margin-bottom:8px">
             <span>Q10: {sig.ci_low:.0f}%</span>
-            <span style="color:#69f0ae;font-weight:700">Median: {sig.expected_return:.0f}%</span>
+            <span style="color:#69f0ae;font-weight:700">⟨ {sig.expected_return:.0f}% ⟩</span>
             <span>Q90: {sig.ci_high:.0f}%</span>
           </div>
-          <div style="background:#1a1a2e;border-radius:6px;height:10px;margin:8px 0;position:relative">
-            <div style="position:absolute;left:{min(max(median_pct,0),100):.0f}%;
-                        transform:translateX(-50%);top:-3px;
-                        background:#69f0ae;width:4px;height:16px;border-radius:2px"></div>
+          <div style="background:#1a1a2e;border-radius:6px;height:12px;margin:8px 0;position:relative">
             <div style="background:linear-gradient(to right,#1a1a3a,#29b6f6,#69f0ae);
-                        height:10px;border-radius:6px;opacity:0.4;width:100%"></div>
+                        height:12px;border-radius:6px;opacity:0.5;width:100%"></div>
+            <div style="position:absolute;left:{min(max(med_pct,2),98):.0f}%;
+                        transform:translateX(-50%);top:-4px;
+                        background:#69f0ae;width:4px;height:20px;border-radius:2px"></div>
           </div>
-          <div style="color:#aaa;font-size:12px;margin-top:8px">
-            Horizon: 126 trading days (~6 months)
+          <div style="margin-top:20px">
+            <div style="color:#888;font-size:11px;margin-bottom:6px">DAILY METRICS</div>
+            <div style="display:flex;gap:12px;font-size:12px">
+              <div><span style="color:#666">RS 1M</span><br>
+                   <b style="color:{'#69f0ae' if sig.rs_1m > 0 else '#ef5350'}">{sig.rs_1m:+.1f}%</b></div>
+              <div><span style="color:#666">RS 3M</span><br>
+                   <b style="color:{'#69f0ae' if sig.rs_3m > 0 else '#ef5350'}">{sig.rs_3m:+.1f}%</b></div>
+              <div><span style="color:#666">Vol 20d $</span><br>
+                   <b style="color:#ccc">{sig.dollar_vol_20d/1e6:.0f}M</b></div>
+              <div><span style="color:#666">Days∆ATH</span><br>
+                   <b style="color:#ccc">{sig.days_since_ath:.0f}</b></div>
+            </div>
           </div>
-        </div>""", unsafe_allow_html=True)
-
-# ── Tooltips legend ───────────────────────────────────────────────────────────
-with st.expander('Column Glossary', expanded=False):
-    st.markdown("""
-| Column | Meaning |
-|---|---|
-| **Rating** | AI composite grade: A+ (strongest) → C+ |
-| **Conf** | How confident the model is (not probability of gain) |
-| **Stable** | Probability of >15% gain with <10% drawdown |
-| **Growth** | Potential for explosive >60% gain |
-| **Crash%** | Probability of >30% crash over 126 days |
-| **Exp Ret** | Average predicted return over 126 trading days |
-| **Exp DD** | Worst expected drawdown before peak |
-| **CI** | Confidence interval (Q10–Q90) for Exp Ret |
-| **Kelly** | Recommended position size (max 25%) |
-| **Agree** | How many of 4 models agree (0–4) |
-| **Ptf** | ★ = in recommended portfolio |
-    """)
+        </div>
+        """, unsafe_allow_html=True)
