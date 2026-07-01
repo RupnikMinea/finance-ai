@@ -102,8 +102,6 @@ div[data-testid="stDataFrame"] table th {
     /* Metric row wraps */
     .metric-row { flex-wrap: wrap; }
     .m-box { min-width: 45%; }
-    /* Hide sidebar by default on mobile */
-    [data-testid="stSidebar"] { display: none; }
     /* Compact header */
     h1, h2 { font-size: 20px !important; }
     /* Table scrollable */
