@@ -73,7 +73,7 @@ _universe_sizes = {
 def _get_us_tickers_cached():
     """Fetch all US tickers once per session."""
     if 'us_tickers_all' not in st.session_state:
-        with st.spinner("Fetching all US stock tickers from NASDAQ FTP..."):
+        with st.spinner("Fetching all US stock tickers from SEC EDGAR (~6,000 stocks)..."):
             from engine.universe import fetch_us_tickers
             st.session_state['us_tickers_all'] = fetch_us_tickers()
     return st.session_state['us_tickers_all']
