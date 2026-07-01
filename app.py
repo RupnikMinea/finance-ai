@@ -68,6 +68,53 @@ st.markdown("""
 div[data-testid="stDataFrame"] table th {
     background: #1a1a2e !important; color: #b39ddb !important;
 }
+
+/* Legend box */
+.legend-box {
+    background:#0d0d1a; border:1px solid #1e1e3a; border-radius:10px;
+    padding:14px 18px; margin-top:16px; font-size:13px;
+}
+.legend-box table { width:100%; border-collapse:collapse; }
+.legend-box td { padding:5px 8px; border-bottom:1px solid #1a1a2e; color:#aaa; }
+.legend-box td:first-child { color:#b39ddb; font-weight:600; white-space:nowrap; width:130px; }
+
+/* Page description */
+.page-desc {
+    border-left:3px solid #29b6f6; padding:10px 16px;
+    background:#0a0f1a; border-radius:0 8px 8px 0; margin-bottom:20px;
+    font-size:13px; color:#aaa; line-height:1.6;
+}
+
+/* ── MOBILE responsive ── */
+@media (max-width: 768px) {
+    /* Stack all columns vertically */
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    /* Bigger tap targets */
+    .stButton > button { min-height: 44px; font-size: 15px !important; }
+    /* Readable font */
+    .stApp { font-size: 14px; }
+    /* Cards full width */
+    .kpi-card, .stock-card, .detail-card, .m-box { width: 100%; }
+    /* Metric row wraps */
+    .metric-row { flex-wrap: wrap; }
+    .m-box { min-width: 45%; }
+    /* Hide sidebar by default on mobile */
+    [data-testid="stSidebar"] { display: none; }
+    /* Compact header */
+    h1, h2 { font-size: 20px !important; }
+    /* Table scrollable */
+    [data-testid="stDataFrame"] { overflow-x: auto; }
+    /* Hide less important columns on mobile */
+    .hide-mobile { display: none !important; }
+}
+@media (max-width: 480px) {
+    .kpi-value { font-size: 22px !important; }
+    .m-box { min-width: 42%; }
+}
 </style>
 """, unsafe_allow_html=True)
 

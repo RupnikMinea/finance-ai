@@ -232,7 +232,7 @@ if not selected_ticker:
         selected_ticker = sel_sb
 
 # ── Column glossary ────────────────────────────────────────────────────────────
-with st.expander('📖 Column Legend', expanded=False):
+with st.expander('📖 Column Legend', expanded=True):
     st.markdown("""
 | Column | Meaning |
 |---|---|

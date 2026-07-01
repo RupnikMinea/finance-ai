@@ -110,7 +110,7 @@ if custom:
 else:
     st.info('Select stocks above to build a custom portfolio.')
 
-with st.expander('📖 Parameter Legend', expanded=False):
+with st.expander('📖 Parameter Legend', expanded=True):
     st.markdown("""
 | Parameter | Meaning |
 |---|---|

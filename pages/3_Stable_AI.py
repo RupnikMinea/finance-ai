@@ -63,7 +63,7 @@ for sig in stocks:
         if sig.reasons_pos:
             st.markdown('**Reasons:** ' + ' · '.join(f'✓ {r}' for r in sig.reasons_pos))
 
-with st.expander('📖 Parameter Legend', expanded=False):
+with st.expander('📖 Parameter Legend', expanded=True):
     st.markdown("""
 | Parameter | Meaning |
 |---|---|
