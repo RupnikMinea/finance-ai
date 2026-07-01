@@ -15,7 +15,7 @@ def compute_ai_rating(confidence: float, stable_score: float,
 
 
 def predict_and_rank(snap: pd.DataFrame, models: dict) -> pd.DataFrame:
-    X = snap[ALL_FEATS].fillna(0).values
+    X = snap[ALL_FEATS].fillna(0)
     n = len(snap)
 
     mu_p  = models['max_upside'].predict(X)           if 'max_upside'      in models else np.zeros(n)
@@ -27,8 +27,9 @@ def predict_and_rank(snap: pd.DataFrame, models: dict) -> pd.DataFrame:
     edd_p = np.clip(edd_p, -70.0, -0.5)
     rr    = er_p / np.abs(edd_p)
 
-    b_dyn     = np.where((er_p > 0.5) & (edd_p < -0.5), er_p / np.abs(edd_p), 0.0)
-    kelly_dyn = np.where(b_dyn > 0, ps_p - (1 - ps_p) / b_dyn, 0.0)
+    abs_edd = np.abs(edd_p)
+    b_dyn     = np.where((er_p > 0.5) & (abs_edd > 0.5), er_p / (abs_edd + 1e-9), 0.0)
+    kelly_dyn = np.where(b_dyn > 0, ps_p - (1 - ps_p) / (b_dyn + 1e-9), 0.0)
     kelly_dyn = np.clip(kelly_dyn * 100, 0.0, 25.0)
 
     def rk(arr):  return pd.Series(arr).rank(pct=True).values
