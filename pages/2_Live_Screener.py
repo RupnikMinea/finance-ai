@@ -57,32 +57,47 @@ with col_actions:
     export_btn   = qa3.button('📄 Export CSV', use_container_width=True)
 
 # ── Universe selector ──────────────────────────────────────────────────────────
-from config import UNIVERSE_MAP, get_universe, SP500_ADD, ETF_LIST, RUSSELL2000_TOP, NASDAQ100
+from config import ALL_UNIVERSES, get_universe, SP500_ADD, ETF_LIST, RUSSELL2000_TOP, NASDAQ100
 
 _universe_sizes = {
-    'NASDAQ-100':          len(NASDAQ100),
-    'S&P 500':             len(SP500_ADD),
-    'ETFs':                len(ETF_LIST),
-    'Russell 2000 Top 80': len(RUSSELL2000_TOP),
+    'NASDAQ-100':   len(NASDAQ100),
+    'S&P 500':      len(SP500_ADD),
+    'ETFs':         len(ETF_LIST),
+    'Russell 2000': len(RUSSELL2000_TOP),
 }
 
 with st.expander("⚙️ Universe — which stocks to scan", expanded=False):
-    selected_universes = st.multiselect(
-        "Select universes",
-        options=list(_universe_sizes.keys()),
-        default=st.session_state.get('selected_universes', ['NASDAQ-100']),
-        format_func=lambda u: f"{u}  ({_universe_sizes[u]} stocks)",
-        label_visibility='collapsed',
+    select_all = st.checkbox(
+        "🌍 All universes",
+        value=st.session_state.get('universe_all', False),
+        help="Select all universes at once"
     )
-    if not selected_universes:
-        selected_universes = ['NASDAQ-100']
+    st.session_state['universe_all'] = select_all
+
+    if select_all:
+        selected_universes = ALL_UNIVERSES
+        st.caption("All universes selected.")
+    else:
+        selected_universes = st.multiselect(
+            "Pick universes",
+            options=ALL_UNIVERSES,
+            default=st.session_state.get('selected_universes', ['NASDAQ-100']),
+            format_func=lambda u: f"{u}  ({_universe_sizes[u]} stocks)",
+            label_visibility='collapsed',
+        )
+        if not selected_universes:
+            selected_universes = ['NASDAQ-100']
+
     st.session_state['selected_universes'] = selected_universes
     n_total = len(get_universe(selected_universes))
-    st.caption(f"Total: **{n_total} tickers** will be scanned.")
-    if n_total > 200:
-        st.warning(f"⚠ {n_total} tickers — scan will take 5–10 min and requires ~1 GB RAM. Works best locally, may OOM on Railway.")
+    breakdown = '  +  '.join(f"{u} ({_universe_sizes[u]})" for u in selected_universes)
+    st.caption(f"**{n_total} tickers total** — {breakdown}")
+    if n_total > 300:
+        st.warning(f"⚠ {n_total} tickers — ~10–15 min, zahteva ~1.5 GB RAM. Priporočeno lokalno.")
+    elif n_total > 150:
+        st.warning(f"⚠ {n_total} tickers — ~5–8 min, may OOM on Railway (512 MB). Best run locally.")
     elif n_total > 100:
-        st.info(f"ℹ {n_total} tickers — scan will take ~3–5 min.")
+        st.info(f"ℹ {n_total} tickers — ~3–5 min on Railway.")
 
 # ── Run Scan logic ─────────────────────────────────────────────────────────────
 if run_clicked:
